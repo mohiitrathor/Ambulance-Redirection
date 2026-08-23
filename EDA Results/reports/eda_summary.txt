@@ -160,8 +160,7 @@ Duplicate rows: 0
 ======================================================================
 PATIENT INCIDENTS - MISSING VALUES
 ======================================================================
-Injury_Type: 80,050 (80.05%)
-Oxygen_Requirement: 24,885 (24.88%)
+No missing values found.
 
 ======================================================================
 AMBULANCES - MISSING VALUES
@@ -532,7 +531,7 @@ Oxygen_Requirement
 ------------------
   Oxygen Mask: 35,057 (35.06%)
   Nasal Cannula: 32,453 (32.45%)
-  nan: 24,885 (24.88%)
+  No Oxygen: 24,885 (24.88%)
   Ventilator: 7,605 (7.61%)
 
 Consciousness
@@ -544,7 +543,7 @@ Consciousness
 
 Injury_Type
 -----------
-  nan: 80,050 (80.05%)
+  No Injury: 80,050 (80.05%)
   Fracture: 6,020 (6.02%)
   Head Injury: 4,975 (4.98%)
   Laceration: 3,987 (3.99%)
@@ -2845,7 +2844,7 @@ FINAL EDA VALIDATION
 Patients
   Rows: 100,000
   Columns: 30
-  Missing values: 104,935
+  Missing values: 0
   Duplicate rows: 0
 
 Ambulances
