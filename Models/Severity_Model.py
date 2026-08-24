@@ -2,6 +2,7 @@ import pandas as pd
 
 from pathlib import Path
 
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
@@ -217,7 +218,7 @@ preprocessor = ColumnTransformer(
 
         (
             "numeric",
-            "passthrough",
+            StandardScaler(),
             numeric_features
         )
     ]
@@ -306,7 +307,7 @@ model = Pipeline(
         (
             "classifier",
             LogisticRegression(
-                max_iter=1000,
+                max_iter=100000,
                 random_state=RANDOM_STATE
             )
         )
