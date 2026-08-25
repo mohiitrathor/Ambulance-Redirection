@@ -1,0 +1,202 @@
+======================================================================
+LOGISTIC REGRESSION FEATURE ANALYSIS
+======================================================================
+
+Model:
+Tuned Logistic Regression
+
+Parameters:
+C = 1
+class_weight = balanced
+solver = lbfgs
+
+Original features: 24
+Transformed features: 44
+
+======================================================================
+TOP 20 FEATURES BY MEAN ABSOLUTE COEFFICIENT
+======================================================================
+
+                                         Mean_Absolute_Coefficient
+Feature                                                           
+numeric__GCS                                                1.7626
+categorical__Condition_Respiratory                          1.7557
+numeric__SpO2                                               1.6106
+categorical__Condition_Other                                1.3429
+numeric__Heart_Rate                                         1.1002
+numeric__Pain_Score                                         1.0084
+numeric__Respiratory_Rate                                   0.8784
+categorical__Condition_Gastrointestinal                     0.8407
+categorical__Injury_Type_No Injury                          0.5091
+numeric__Systolic_BP                                        0.4574
+categorical__Sex_Female                                     0.4268
+categorical__Sex_Male                                       0.4221
+categorical__Condition_Trauma                               0.4105
+categorical__Consciousness_Alert                            0.3692
+numeric__Blood_Glucose                                      0.3540
+numeric__Respiratory_Distress                               0.3031
+categorical__Arrival_Mode_Walk-in                           0.2962
+categorical__Arrival_Mode_Referral                          0.2891
+categorical__Consciousness_Confused                         0.2754
+categorical__Arrival_Mode_Ambulance                         0.2679
+
+======================================================================
+CRITICAL
+======================================================================
+
+Strongest positive features:
+
+Feature
+categorical__Condition_Other               2.1151
+numeric__Heart_Rate                        1.8263
+numeric__Pain_Score                        1.7101
+numeric__Respiratory_Rate                  1.4600
+categorical__Condition_Gastrointestinal    1.1773
+numeric__Blood_Glucose                     0.5899
+numeric__Respiratory_Distress              0.4162
+numeric__Temperature                       0.3384
+categorical__Condition_Cardiac             0.2744
+numeric__Bleeding                          0.2485
+
+Strongest negative features:
+
+Feature
+categorical__Condition_Respiratory     -2.9848
+numeric__GCS                           -2.8508
+numeric__SpO2                          -2.6703
+numeric__Systolic_BP                   -0.7690
+categorical__Condition_Infection       -0.4791
+categorical__Consciousness_Alert       -0.3847
+categorical__Condition_Trauma          -0.1932
+categorical__Injury_Type_Fracture      -0.0889
+categorical__Arrival_Mode_Referral     -0.0541
+categorical__Injury_Type_Head Injury   -0.0534
+
+======================================================================
+EMERGENCY
+======================================================================
+
+Strongest positive features:
+
+Feature
+categorical__Condition_Other               1.0978
+numeric__Heart_Rate                        0.9243
+numeric__Pain_Score                        0.8110
+numeric__Respiratory_Rate                  0.7359
+categorical__Condition_Gastrointestinal    0.7006
+categorical__Injury_Type_No Injury         0.5933
+categorical__Sex_Male                      0.5250
+categorical__Sex_Female                    0.5116
+categorical__Condition_Trauma              0.4433
+categorical__Arrival_Mode_Walk-in          0.3618
+
+Strongest negative features:
+
+Feature
+numeric__GCS                         -1.4757
+categorical__Condition_Respiratory   -1.3690
+numeric__SpO2                        -1.3522
+numeric__Systolic_BP                 -0.3652
+categorical__Condition_Infection     -0.1844
+numeric__Diastolic_BP                -0.0461
+categorical__Injury_Type_Fracture    -0.0190
+numeric__Respiratory_Disease         -0.0190
+numeric__Hypertension                -0.0174
+numeric__Diabetes                    -0.0131
+
+======================================================================
+LOW
+======================================================================
+
+Strongest positive features:
+
+Feature
+categorical__Condition_Respiratory             1.3809
+numeric__GCS                                   1.3792
+numeric__SpO2                                  1.3274
+numeric__Systolic_BP                           0.3728
+categorical__Condition_Infection               0.3441
+categorical__Consciousness_Alert               0.1721
+categorical__Injury_Type_Fracture              0.0897
+categorical__Injury_Type_Head Injury           0.0808
+categorical__Condition_Trauma                  0.0655
+categorical__Oxygen_Requirement_Oxygen Mask    0.0555
+
+Strongest negative features:
+
+Feature
+categorical__Condition_Other              -0.9646
+numeric__Heart_Rate                       -0.9115
+numeric__Pain_Score                       -0.8385
+numeric__Respiratory_Rate                 -0.7562
+categorical__Condition_Gastrointestinal   -0.5519
+numeric__Blood_Glucose                    -0.3013
+categorical__Consciousness_Unconscious    -0.2340
+categorical__Condition_Cardiac            -0.1984
+numeric__Respiratory_Distress             -0.1746
+numeric__Temperature                      -0.1654
+
+======================================================================
+MODERATE
+======================================================================
+
+Strongest positive features:
+
+Feature
+categorical__Injury_Type_No Injury             0.5591
+categorical__Sex_Female                        0.5461
+categorical__Sex_Male                          0.5303
+categorical__Condition_Trauma                  0.5174
+categorical__Consciousness_Alert               0.4241
+categorical__Arrival_Mode_Walk-in              0.3729
+categorical__Arrival_Mode_Referral             0.3698
+categorical__Oxygen_Requirement_Ventilator     0.3357
+categorical__Arrival_Mode_Ambulance            0.3338
+categorical__Oxygen_Requirement_Oxygen Mask    0.2882
+
+Strongest negative features:
+
+Feature
+numeric__GCS                         -0.0800
+categorical__Condition_Respiratory   -0.0355
+categorical__Injury_Type_Fracture    -0.0290
+numeric__Diastolic_BP                -0.0160
+numeric__Respiratory_Disease         -0.0126
+numeric__Systolic_BP                 -0.0092
+numeric__Pain_Score                  -0.0078
+numeric__Hypertension                -0.0076
+numeric__Temperature                 -0.0076
+numeric__Heart_Rate                  -0.0069
+
+======================================================================
+NON-URGENT
+======================================================================
+
+Strongest positive features:
+
+Feature
+numeric__GCS                          3.0273
+categorical__Condition_Respiratory    3.0084
+numeric__SpO2                         2.6992
+numeric__Systolic_BP                  0.7706
+categorical__Condition_Infection      0.2088
+numeric__Diastolic_BP                 0.0596
+numeric__Respiratory_Disease          0.0527
+categorical__Injury_Type_Fracture     0.0472
+numeric__Diabetes                     0.0300
+numeric__Hypertension                 0.0054
+
+Strongest negative features:
+
+Feature
+categorical__Condition_Other              -2.3926
+numeric__Heart_Rate                       -1.8322
+numeric__Pain_Score                       -1.6748
+categorical__Condition_Gastrointestinal   -1.5498
+numeric__Respiratory_Rate                 -1.4349
+categorical__Injury_Type_No Injury        -1.2152
+categorical__Sex_Female                   -1.0317
+categorical__Sex_Male                     -1.0165
+categorical__Condition_Trauma             -0.8330
+categorical__Arrival_Mode_Walk-in         -0.7343
+

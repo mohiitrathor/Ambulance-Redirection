@@ -1,0 +1,124 @@
+======================================================================
+LOGISTIC REGRESSION ERROR ANALYSIS
+======================================================================
+
+Model: Tuned Logistic Regression
+C = 1
+class_weight = balanced
+solver = lbfgs
+
+Dataset shape: (100000, 30)
+Test samples: 20,000
+
+======================================================================
+OVERALL ERROR SUMMARY
+======================================================================
+
+Correct predictions: 13,421
+Incorrect predictions: 6,579
+Accuracy: 0.6711
+
+======================================================================
+CONFUSION MATRIX
+======================================================================
+
+            Non-Urgent   Low  Moderate  Emergency  Critical
+Non-Urgent         894   198         2          0         0
+Low                576  1774       459         13         0
+Moderate            44  1024      3751        988        27
+Emergency            0    27      1249       4119      1249
+Critical             0     0        20        703      2883
+
+======================================================================
+MOST COMMON MISCLASSIFICATION PAIRS
+======================================================================
+
+    Actual  Predicted  Count
+ Emergency   Moderate   1249
+ Emergency   Critical   1249
+  Moderate        Low   1024
+  Moderate  Emergency    988
+  Critical  Emergency    703
+       Low Non-Urgent    576
+       Low   Moderate    459
+Non-Urgent        Low    198
+  Moderate Non-Urgent     44
+ Emergency        Low     27
+  Moderate   Critical     27
+  Critical   Moderate     20
+       Low  Emergency     13
+Non-Urgent   Moderate      2
+
+======================================================================
+ERROR RATE BY ACTUAL SEVERITY
+======================================================================
+
+  Severity  Total  Correct  Errors  Error_Rate
+Non-Urgent   1094      894     200       18.28
+       Low   2822     1774    1048       37.14
+  Moderate   5834     3751    2083       35.70
+ Emergency   6644     4119    2525       38.00
+  Critical   3606     2883     723       20.05
+
+======================================================================
+SEVERITY DISTANCE ANALYSIS
+======================================================================
+
+Total errors: 6,579
+Neighboring-level errors: 6,446
+Errors >= 2 levels apart: 133
+Neighboring-level percentage: 97.98%
+Large-error percentage: 2.02%
+
+======================================================================
+CRITICAL CLASS
+======================================================================
+
+Total Critical cases: 3,606
+Correct: 2,883
+Errors: 723
+
+Predicted
+Emergency    703
+Moderate      20
+
+======================================================================
+EMERGENCY CLASS
+======================================================================
+
+Total Emergency cases: 6,644
+Correct: 4,119
+Errors: 2,525
+
+Predicted
+Critical    1249
+Moderate    1249
+Low           27
+
+======================================================================
+PREDICTION CONFIDENCE
+======================================================================
+
+Correct predictions: 0.6857
+Incorrect predictions: 0.6342
+
+======================================================================
+NUMERIC FEATURE DIFFERENCES
+======================================================================
+
+                      Correct_Mean  Incorrect_Mean  Absolute_Difference
+Heart_Rate                 103.264         101.387                1.877
+Systolic_BP                109.069         110.551                1.483
+Blood_Glucose              117.246         116.317                0.929
+Diastolic_BP                67.678          68.587                0.909
+SpO2                        91.081          91.601                0.520
+Respiratory_Rate            22.224          21.770                0.454
+GCS                         10.077          10.420                0.343
+Pain_Score                   6.043           5.849                0.193
+Age                         48.100          48.191                0.091
+Temperature                 37.207          37.189                0.018
+Respiratory_Distress         0.241           0.227                0.014
+Chest_Pain                   0.208           0.194                0.014
+Bleeding                     0.190           0.178                0.012
+Diabetes                     0.173           0.165                0.008
+Seizure                      0.094           0.088                0.006
