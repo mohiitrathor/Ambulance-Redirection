@@ -2,13 +2,12 @@ import pandas as pd
 
 from pathlib import Path
 
-from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
-from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import HistGradientBoostingClassifier
 
 from sklearn.metrics import (
     accuracy_score,
@@ -38,14 +37,12 @@ DATA_PATH = (
 # ============================================================
 
 print("=" * 70)
-print("EMERGENCY AMBULANCE SYSTEM - LOGISTIC REGRESSION")
+print("EMERGENCY AMBULANCE SYSTEM - HISTOGRAM GRADIENT BOOSTING")
 print("=" * 70)
 
 print("\nLoading dataset...")
 
-df = pd.read_csv(
-    DATA_PATH
-)
+df = pd.read_csv(DATA_PATH)
 
 print(
     f"Dataset shape: {df.shape}"
@@ -63,24 +60,6 @@ y = df[TARGET]
 
 # ============================================================
 # 3. REMOVE IRRELEVANT / LEAKAGE COLUMNS
-# ============================================================
-#
-# Incident_ID:
-#   Identifier only.
-#
-# Patient_Lat / Patient_Lon:
-#   Location should not determine clinical severity.
-#
-# Clinical_Score:
-#   Synthetic rule-based reference score derived from
-#   clinical features. Including it would make the model
-#   learn the predefined scoring system.
-#
-# Ambulance_Priority:
-#   Directly derived from Severity.
-#
-# Severity:
-#   Target variable.
 # ============================================================
 
 DROP_COLUMNS = [
@@ -104,7 +83,6 @@ X = df.drop(
 print("\nFeatures used by the model:")
 
 for feature in X.columns:
-
     print(
         f"  - {feature}"
     )
@@ -183,10 +161,6 @@ print(
 # ============================================================
 # 7. TRAIN / TEST SPLIT
 # ============================================================
-#
-# Stratification keeps the severity distribution consistent
-# between the training and testing sets.
-# ============================================================
 
 X_train, X_test, y_train, y_test = train_test_split(
     X,
@@ -214,15 +188,12 @@ print(
 # 8. PREPROCESSING
 # ============================================================
 #
-# Numeric features:
-#   Standardized using StandardScaler.
+# HistGradientBoostingClassifier requires numerical input.
 #
-# Categorical features:
-#   Converted to numerical representation using one-hot
-#   encoding.
+# Categorical features are one-hot encoded.
 #
-# Both transformations are inside the Pipeline, meaning
-# they are fitted only on the training data.
+# Numerical features are passed through unchanged because
+# tree-based boosting does not require standardization.
 # ============================================================
 
 preprocessor = ColumnTransformer(
@@ -232,7 +203,8 @@ preprocessor = ColumnTransformer(
             "categorical",
 
             OneHotEncoder(
-                handle_unknown="ignore"
+                handle_unknown="ignore",
+                sparse_output=False
             ),
 
             categorical_features
@@ -241,7 +213,7 @@ preprocessor = ColumnTransformer(
         (
             "numeric",
 
-            StandardScaler(),
+            "passthrough",
 
             numeric_features
         )
@@ -250,7 +222,7 @@ preprocessor = ColumnTransformer(
 
 
 # ============================================================
-# 9. LOGISTIC REGRESSION MODEL
+# 9. MODEL
 # ============================================================
 
 model = Pipeline(
@@ -264,8 +236,10 @@ model = Pipeline(
         (
             "classifier",
 
-            LogisticRegression(
-                max_iter=100000,
+            HistGradientBoostingClassifier(
+                max_iter=200,
+                learning_rate=0.1,
+                max_leaf_nodes=31,
                 random_state=RANDOM_STATE
             )
         )
@@ -278,7 +252,7 @@ model = Pipeline(
 # ============================================================
 
 print("\n" + "=" * 70)
-print("TRAINING LOGISTIC REGRESSION")
+print("TRAINING HISTOGRAM GRADIENT BOOSTING")
 print("=" * 70)
 
 print("\nTraining model...")
@@ -336,6 +310,14 @@ print(
 # 13. CLASSIFICATION REPORT
 # ============================================================
 
+labels = [
+    "Non-Urgent",
+    "Low",
+    "Moderate",
+    "Emergency",
+    "Critical"
+]
+
 print("\n" + "=" * 70)
 print("CLASSIFICATION REPORT")
 print("=" * 70)
@@ -344,6 +326,7 @@ print(
     classification_report(
         y_test,
         y_pred,
+        labels=labels,
         digits=4
     )
 )
@@ -352,14 +335,6 @@ print(
 # ============================================================
 # 14. CONFUSION MATRIX
 # ============================================================
-
-labels = [
-    "Non-Urgent",
-    "Low",
-    "Moderate",
-    "Emergency",
-    "Critical"
-]
 
 cm = confusion_matrix(
     y_test,
@@ -400,5 +375,5 @@ print(
 )
 
 print(
-    "\nLogistic Regression training and evaluation complete."
+    "\nHistGradientBoosting training and evaluation complete."
 )

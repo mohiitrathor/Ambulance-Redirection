@@ -2,13 +2,10 @@ import pandas as pd
 
 from pathlib import Path
 
-from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
-
-from sklearn.linear_model import LogisticRegression
 
 from sklearn.metrics import (
     accuracy_score,
@@ -16,6 +13,8 @@ from sklearn.metrics import (
     classification_report,
     confusion_matrix
 )
+
+from xgboost import XGBClassifier
 
 
 # ============================================================
@@ -38,14 +37,12 @@ DATA_PATH = (
 # ============================================================
 
 print("=" * 70)
-print("EMERGENCY AMBULANCE SYSTEM - LOGISTIC REGRESSION")
+print("EMERGENCY AMBULANCE SYSTEM - XGBOOST")
 print("=" * 70)
 
 print("\nLoading dataset...")
 
-df = pd.read_csv(
-    DATA_PATH
-)
+df = pd.read_csv(DATA_PATH)
 
 print(
     f"Dataset shape: {df.shape}"
@@ -73,8 +70,7 @@ y = df[TARGET]
 #
 # Clinical_Score:
 #   Synthetic rule-based reference score derived from
-#   clinical features. Including it would make the model
-#   learn the predefined scoring system.
+#   clinical features. Including it would introduce leakage.
 #
 # Ambulance_Priority:
 #   Directly derived from Severity.
@@ -104,7 +100,6 @@ X = df.drop(
 print("\nFeatures used by the model:")
 
 for feature in X.columns:
-
     print(
         f"  - {feature}"
     )
@@ -139,7 +134,33 @@ print(
 
 
 # ============================================================
-# 6. IDENTIFY FEATURE TYPES
+# 6. CONVERT TARGET TO NUMERIC LABELS
+# ============================================================
+#
+# XGBoost requires numerical class labels.
+#
+# 0 = Non-Urgent
+# 1 = Low
+# 2 = Moderate
+# 3 = Emergency
+# 4 = Critical
+# ============================================================
+
+severity_mapping = {
+    "Non-Urgent": 0,
+    "Low": 1,
+    "Moderate": 2,
+    "Emergency": 3,
+    "Critical": 4
+}
+
+y = y.map(
+    severity_mapping
+)
+
+
+# ============================================================
+# 7. IDENTIFY FEATURE TYPES
 # ============================================================
 
 categorical_features = (
@@ -181,11 +202,7 @@ print(
 
 
 # ============================================================
-# 7. TRAIN / TEST SPLIT
-# ============================================================
-#
-# Stratification keeps the severity distribution consistent
-# between the training and testing sets.
+# 8. TRAIN / TEST SPLIT
 # ============================================================
 
 X_train, X_test, y_train, y_test = train_test_split(
@@ -211,18 +228,16 @@ print(
 
 
 # ============================================================
-# 8. PREPROCESSING
+# 9. PREPROCESSING
 # ============================================================
 #
-# Numeric features:
-#   Standardized using StandardScaler.
+# XGBoost does not require feature scaling.
+#
+# Numerical features:
+#   Passed through unchanged.
 #
 # Categorical features:
-#   Converted to numerical representation using one-hot
-#   encoding.
-#
-# Both transformations are inside the Pipeline, meaning
-# they are fitted only on the training data.
+#   One-hot encoded.
 # ============================================================
 
 preprocessor = ColumnTransformer(
@@ -241,7 +256,7 @@ preprocessor = ColumnTransformer(
         (
             "numeric",
 
-            StandardScaler(),
+            "passthrough",
 
             numeric_features
         )
@@ -250,7 +265,7 @@ preprocessor = ColumnTransformer(
 
 
 # ============================================================
-# 9. LOGISTIC REGRESSION MODEL
+# 10. XGBOOST MODEL
 # ============================================================
 
 model = Pipeline(
@@ -264,9 +279,20 @@ model = Pipeline(
         (
             "classifier",
 
-            LogisticRegression(
-                max_iter=100000,
-                random_state=RANDOM_STATE
+            XGBClassifier(
+                n_estimators=200,
+                max_depth=6,
+                learning_rate=0.1,
+                subsample=0.8,
+                colsample_bytree=0.8,
+
+                objective="multi:softmax",
+                num_class=5,
+
+                eval_metric="mlogloss",
+
+                random_state=RANDOM_STATE,
+                n_jobs=-1
             )
         )
     ]
@@ -274,11 +300,11 @@ model = Pipeline(
 
 
 # ============================================================
-# 10. TRAIN MODEL
+# 11. TRAIN MODEL
 # ============================================================
 
 print("\n" + "=" * 70)
-print("TRAINING LOGISTIC REGRESSION")
+print("TRAINING XGBOOST")
 print("=" * 70)
 
 print("\nTraining model...")
@@ -294,7 +320,7 @@ print(
 
 
 # ============================================================
-# 11. MAKE PREDICTIONS
+# 12. MAKE PREDICTIONS
 # ============================================================
 
 print("\nGenerating predictions...")
@@ -305,7 +331,7 @@ y_pred = model.predict(
 
 
 # ============================================================
-# 12. EVALUATION
+# 13. EVALUATION
 # ============================================================
 
 accuracy = accuracy_score(
@@ -333,24 +359,7 @@ print(
 
 
 # ============================================================
-# 13. CLASSIFICATION REPORT
-# ============================================================
-
-print("\n" + "=" * 70)
-print("CLASSIFICATION REPORT")
-print("=" * 70)
-
-print(
-    classification_report(
-        y_test,
-        y_pred,
-        digits=4
-    )
-)
-
-
-# ============================================================
-# 14. CONFUSION MATRIX
+# 14. CLASSIFICATION REPORT
 # ============================================================
 
 labels = [
@@ -361,10 +370,37 @@ labels = [
     "Critical"
 ]
 
+numeric_labels = [
+    0,
+    1,
+    2,
+    3,
+    4
+]
+
+print("\n" + "=" * 70)
+print("CLASSIFICATION REPORT")
+print("=" * 70)
+
+print(
+    classification_report(
+        y_test,
+        y_pred,
+        labels=numeric_labels,
+        target_names=labels,
+        digits=4
+    )
+)
+
+
+# ============================================================
+# 15. CONFUSION MATRIX
+# ============================================================
+
 cm = confusion_matrix(
     y_test,
     y_pred,
-    labels=labels
+    labels=numeric_labels
 )
 
 cm_df = pd.DataFrame(
@@ -384,7 +420,7 @@ print(
 
 
 # ============================================================
-# 15. SUMMARY
+# 16. SUMMARY
 # ============================================================
 
 print("\n" + "=" * 70)
@@ -400,5 +436,5 @@ print(
 )
 
 print(
-    "\nLogistic Regression training and evaluation complete."
+    "\nXGBoost training and evaluation complete."
 )
