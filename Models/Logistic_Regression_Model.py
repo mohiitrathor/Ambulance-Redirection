@@ -64,24 +64,6 @@ y = df[TARGET]
 # ============================================================
 # 3. REMOVE IRRELEVANT / LEAKAGE COLUMNS
 # ============================================================
-#
-# Incident_ID:
-#   Identifier only.
-#
-# Patient_Lat / Patient_Lon:
-#   Location should not determine clinical severity.
-#
-# Clinical_Score:
-#   Synthetic rule-based reference score derived from
-#   clinical features. Including it would make the model
-#   learn the predefined scoring system.
-#
-# Ambulance_Priority:
-#   Directly derived from Severity.
-#
-# Severity:
-#   Target variable.
-# ============================================================
 
 DROP_COLUMNS = [
     "Incident_ID",
@@ -183,10 +165,7 @@ print(
 # ============================================================
 # 7. TRAIN / TEST SPLIT
 # ============================================================
-#
-# Stratification keeps the severity distribution consistent
-# between the training and testing sets.
-# ============================================================
+
 
 X_train, X_test, y_train, y_test = train_test_split(
     X,
@@ -213,17 +192,7 @@ print(
 # ============================================================
 # 8. PREPROCESSING
 # ============================================================
-#
-# Numeric features:
-#   Standardized using StandardScaler.
-#
-# Categorical features:
-#   Converted to numerical representation using one-hot
-#   encoding.
-#
-# Both transformations are inside the Pipeline, meaning
-# they are fitted only on the training data.
-# ============================================================
+
 
 preprocessor = ColumnTransformer(
     transformers=[

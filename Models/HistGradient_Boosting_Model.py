@@ -187,14 +187,6 @@ print(
 # ============================================================
 # 8. PREPROCESSING
 # ============================================================
-#
-# HistGradientBoostingClassifier requires numerical input.
-#
-# Categorical features are one-hot encoded.
-#
-# Numerical features are passed through unchanged because
-# tree-based boosting does not require standardization.
-# ============================================================
 
 preprocessor = ColumnTransformer(
     transformers=[

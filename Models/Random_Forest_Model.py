@@ -62,23 +62,7 @@ y = df[TARGET]
 # ============================================================
 # 3. REMOVE IRRELEVANT / LEAKAGE COLUMNS
 # ============================================================
-#
-# Incident_ID:
-#   Identifier only.
-#
-# Patient_Lat / Patient_Lon:
-#   Location should not determine clinical severity.
-#
-# Clinical_Score:
-#   Synthetic rule-based reference score derived from
-#   severity-related clinical features.
-#
-# Ambulance_Priority:
-#   Directly derived from Severity.
-#
-# Severity:
-#   Target variable.
-# ============================================================
+
 
 DROP_COLUMNS = [
     "Incident_ID",
@@ -182,13 +166,6 @@ print(
 # ============================================================
 # 7. TRAIN / TEST SPLIT
 # ============================================================
-#
-# IMPORTANT:
-#
-# Keep these settings identical across all model scripts.
-# This ensures every model is evaluated using the same
-# train/test split.
-# ============================================================
 
 X_train, X_test, y_train, y_test = train_test_split(
     X,
@@ -215,13 +192,7 @@ print(
 # ============================================================
 # 8. PREPROCESSING
 # ============================================================
-#
-# Random Forest does NOT require feature scaling.
-#
-# Numerical features are therefore passed through unchanged.
-#
-# Categorical features are converted using OneHotEncoder.
-# ============================================================
+
 
 preprocessor = ColumnTransformer(
     transformers=[

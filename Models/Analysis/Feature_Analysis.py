@@ -251,12 +251,7 @@ coefficient_df.index.name = "Feature"
 # ============================================================
 # 12. ABSOLUTE IMPORTANCE
 # ============================================================
-#
-# Mean absolute coefficient across all classes.
-#
-# Larger values indicate that the feature has a stronger
-# influence on the model's class predictions.
-# ============================================================
+
 
 coefficient_df["Mean_Absolute_Coefficient"] = (
     coefficient_df

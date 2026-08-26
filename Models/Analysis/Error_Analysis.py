@@ -410,14 +410,6 @@ print(
 # ============================================================
 # 15. NEIGHBORING-SEVERITY ERRORS
 # ============================================================
-#
-# Severity is ordinal:
-#
-# Non-Urgent → Low → Moderate → Emergency → Critical
-#
-# An error between neighboring classes is less severe than
-# jumping multiple severity levels.
-# ============================================================
 
 severity_order = {
     "Non-Urgent": 0,
@@ -611,10 +603,6 @@ print(
 
 # ============================================================
 # 19. FEATURE SUMMARY FOR MISCLASSIFICATIONS
-# ============================================================
-#
-# Compare numerical feature means between correct and incorrect
-# predictions.
 # ============================================================
 
 numeric_analysis_features = [

@@ -61,23 +61,7 @@ y = df[TARGET]
 # ============================================================
 # 3. REMOVE IRRELEVANT / LEAKAGE COLUMNS
 # ============================================================
-#
-# Incident_ID:
-#   Identifier only.
-#
-# Patient_Lat / Patient_Lon:
-#   Location should not determine clinical severity.
-#
-# Clinical_Score:
-#   Synthetic rule-based reference score derived from
-#   clinical features. Including it would introduce leakage.
-#
-# Ambulance_Priority:
-#   Directly derived from Severity.
-#
-# Severity:
-#   Target variable.
-# ============================================================
+
 
 DROP_COLUMNS = [
     "Incident_ID",
@@ -136,15 +120,7 @@ print(
 # ============================================================
 # 6. CONVERT TARGET TO NUMERIC LABELS
 # ============================================================
-#
-# XGBoost requires numerical class labels.
-#
-# 0 = Non-Urgent
-# 1 = Low
-# 2 = Moderate
-# 3 = Emergency
-# 4 = Critical
-# ============================================================
+
 
 severity_mapping = {
     "Non-Urgent": 0,
@@ -230,15 +206,7 @@ print(
 # ============================================================
 # 9. PREPROCESSING
 # ============================================================
-#
-# XGBoost does not require feature scaling.
-#
-# Numerical features:
-#   Passed through unchanged.
-#
-# Categorical features:
-#   One-hot encoded.
-# ============================================================
+
 
 preprocessor = ColumnTransformer(
     transformers=[
