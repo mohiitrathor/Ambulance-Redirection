@@ -1,0 +1,99 @@
+======================================================================
+LOGISTIC REGRESSION CONFIDENCE ANALYSIS
+======================================================================
+
+Model: Tuned Logistic Regression
+C = 1
+class_weight = balanced
+solver = lbfgs
+
+Dataset shape: (100000, 30)
+Test samples: 20,000
+
+======================================================================
+OVERALL CONFIDENCE
+======================================================================
+
+Average confidence - correct: 0.6857
+Average confidence - incorrect: 0.6342
+Median confidence - correct: 0.6673
+Median confidence - incorrect: 0.6286
+
+======================================================================
+INCORRECT PREDICTION CONFIDENCE
+======================================================================
+
+Borderline: 2,648 (40.25%)
+Moderate: 3,446 (52.38%)
+High: 485 (7.37%)
+
+======================================================================
+MAJOR ERROR PAIRS
+======================================================================
+
+   Actual  Predicted  Count  Average_Confidence  Median_Confidence  Minimum_Confidence  Maximum_Confidence  Average_Actual_Probability  Borderline_Count  Borderline_Percentage  Moderate_Count  Moderate_Percentage  High_Count  High_Percentage
+Emergency   Moderate   1249              0.6133             0.6217              0.4760              0.7498                      0.2851               515                41.2330             734              58.7670           0           0.0000
+Emergency   Critical   1249              0.6970             0.6768              0.4887              0.9897                      0.2949               385                30.8247             538              43.0745         326          26.1009
+ Critical  Emergency    703              0.6156             0.6210              0.4814              0.7451                      0.2920               294                41.8208             409              58.1792           0           0.0000
+ Moderate  Emergency    988              0.6129             0.6216              0.4748              0.7431                      0.2808               413                41.8016             575              58.1984           0           0.0000
+ Moderate        Low   1024              0.6040             0.6060              0.4730              0.7512                      0.2898               483                47.1680             541              52.8320           0           0.0000
+      Low Non-Urgent    576              0.6932             0.6764              0.4710              0.9891                      0.2969               191                33.1597             230              39.9306         155          26.9097
+
+======================================================================
+MOST CONFIDENT INCORRECT PREDICTIONS
+======================================================================
+
+   Actual  Predicted  Confidence  Actual_Class_Probability
+Emergency   Critical      0.9897                    0.0103
+Emergency   Critical      0.9896                    0.0104
+      Low Non-Urgent      0.9891                    0.0109
+      Low Non-Urgent      0.9891                    0.0109
+Emergency   Critical      0.9874                    0.0126
+      Low Non-Urgent      0.9872                    0.0128
+Emergency   Critical      0.9853                    0.0147
+      Low Non-Urgent      0.9847                    0.0153
+Emergency   Critical      0.9781                    0.0219
+Emergency   Critical      0.9750                    0.0249
+      Low Non-Urgent      0.9747                    0.0253
+Emergency   Critical      0.9738                    0.0262
+Emergency   Critical      0.9727                    0.0273
+Emergency   Critical      0.9714                    0.0286
+Emergency   Critical      0.9709                    0.0291
+Emergency   Critical      0.9703                    0.0297
+Emergency   Critical      0.9702                    0.0297
+Emergency   Critical      0.9702                    0.0298
+      Low Non-Urgent      0.9698                    0.0301
+Emergency   Critical      0.9685                    0.0315
+
+======================================================================
+BORDERLINE ERRORS
+======================================================================
+
+Total borderline errors: 2,648
+
+Actual      Predicted 
+Emergency   Moderate      515
+Moderate    Low           483
+            Emergency     413
+Emergency   Critical      385
+Critical    Emergency     294
+Low         Moderate      202
+            Non-Urgent    191
+Non-Urgent  Low            94
+Moderate    Non-Urgent     21
+            Critical       17
+Emergency   Low            17
+Critical    Moderate        9
+Low         Emergency       7
+
+======================================================================
+HIGH-CONFIDENCE ERRORS
+======================================================================
+
+Total high-confidence errors: 485
+
+Actual     Predicted 
+Emergency  Critical      326
+Low        Non-Urgent    155
+Moderate   Critical        2
+           Non-Urgent      2

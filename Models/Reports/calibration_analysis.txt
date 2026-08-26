@@ -1,0 +1,42 @@
+EMERGENCY AMBULANCE SYSTEM - CALIBRATION ANALYSIS
+======================================================================
+
+MODEL
+Tuned Logistic Regression
+C = 1
+class_weight = balanced
+solver = lbfgs
+
+DATASET
+Total samples: 100,000
+Training samples: 80,000
+Testing samples: 20,000
+
+MODEL PERFORMANCE
+Accuracy: 0.6711
+Balanced Accuracy: 0.7016
+Log Loss: 0.7449
+Expected Calibration Error: 0.0309
+
+CONFIDENCE VS ACTUAL ACCURACY
+                Samples  Average_Confidence  Accuracy  Calibration_Gap
+Confidence_Bin                                                        
+< 0.50              807              0.4905   50.8055          -1.7534
+0.50 - 0.59        5261              0.5522   57.2135          -1.9903
+0.60 - 0.69        8448              0.6563   68.1463          -2.5209
+0.70 - 0.79        2563              0.7274   70.5423           2.2007
+0.80 - 0.89        1189              0.8522   72.8343          12.3903
+0.90 - 1.00        1732              0.9538   90.6467           4.7299
+
+PER-CLASS CALIBRATION
+     Class  Brier_Score  Log_Loss
+  Critical       0.0700    0.2209
+ Emergency       0.1449    0.4318
+       Low       0.0758    0.2331
+  Moderate       0.1314    0.3989
+Non-Urgent       0.0281    0.0901
+
+INTERPRETATION
+Expected Calibration Error (ECE) measures the difference between predicted confidence and observed accuracy across confidence bins. Lower values indicate better calibration.
+
+A well-calibrated model should have predicted confidence that closely matches its observed accuracy. For example, predictions made with approximately 80% confidence should be correct roughly 80% of the time.
