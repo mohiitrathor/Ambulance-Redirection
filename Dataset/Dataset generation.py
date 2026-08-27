@@ -1735,4 +1735,4 @@ print(
     DATA_DIR / "dispatch_scenarios.csv"
 )
 
-print("\n✓ Generation complete.")
+print("\nGeneration complete.")
