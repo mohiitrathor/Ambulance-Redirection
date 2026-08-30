@@ -2,7 +2,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
+from api.config import FRONTEND_DIR
 from api.dependencies import manager
 from api.routers import (
     dispatch,
@@ -115,3 +117,16 @@ def health():
         "time": manager.simulator.state.current_time,
         "realtime_running": manager.is_realtime_running,
     }
+
+
+# ==============================================================
+# DASHBOARD STATIC FILES
+# ==============================================================
+
+if FRONTEND_DIR.exists():
+    app.mount(
+        "/dashboard",
+        StaticFiles(directory=str(FRONTEND_DIR), html=True),
+        name="frontend",
+    )
+

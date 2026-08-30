@@ -10,3 +10,4 @@ ROOT = Path(__file__).resolve().parents[1]
 DISPATCH_DIR = ROOT / "Dispatch"
 DATASET_DIR = ROOT / "Dataset"
 DATA_DIR = ROOT / "data"
+FRONTEND_DIR = ROOT / "frontend"

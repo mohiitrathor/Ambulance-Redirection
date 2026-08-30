@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RAAH — Emergency Dispatch & Redirection Command Center</title>
+  
+  <!-- Offline Vendored Assets -->
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="vendor/lucide/lucide.min.js"></script>
+
+  <!-- Tactical Command Center Stylesheets -->
+  <link rel="stylesheet" href="css/command_center.css">
+  <link rel="stylesheet" href="css/components.css">
+</head>
+<body>
+  <div id="app-container">
+
+    <!-- ==============================================================
+         HEADER / SIMULATION PLAYBACK BAR
+         ============================================================== -->
+    <header id="command-header">
+      <div class="brand-section">
+        <div class="brand-logo">
+          <i data-lucide="shield-alert"></i>
+          <span>RAAH</span>
+        </div>
+        <div class="brand-sub">Emergency Dispatch Command Center</div>
+      </div>
+
+      <!-- Telemetry Ticker -->
+      <div class="telemetry-ticker">
+        <div class="ticker-item">
+          <span class="ticker-label">Sim Time</span>
+          <span id="sim-clock" class="ticker-value">T+0 min</span>
+        </div>
+        <div class="ticker-item">
+          <span class="ticker-label">Engine Mode</span>
+          <span id="sim-status-pill" class="status-pill stopped">
+            <span class="pulse-dot"></span>
+            <span id="sim-status-text">STOPPED</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Simulation Playback Controls -->
+      <div class="controls-group">
+        <button id="btn-play" class="btn-tactical btn-play" title="Start Real-Time Simulation">
+          <i data-lucide="play"></i> Play
+        </button>
+        <button id="btn-pause" class="btn-tactical btn-pause" title="Pause Simulation" disabled>
+          <i data-lucide="pause"></i> Pause
+        </button>
+        <button id="btn-step" class="btn-tactical" title="Advance 1 Simulated Minute">
+          <i data-lucide="step-forward"></i> +1m
+        </button>
+        <select id="speed-selector" class="speed-select" title="Simulation Speed">
+          <option value="1.0">Speed: 1.0s/m (60x)</option>
+          <option value="0.5">Speed: 0.5s/m (120x)</option>
+          <option value="2.0">Speed: 2.0s/m (30x)</option>
+          <option value="5.0">Speed: 5.0s/m (12x)</option>
+        </select>
+        <button id="btn-reset" class="btn-tactical btn-reset" title="Reset Simulation">
+          <i data-lucide="rotate-ccw"></i> Reset
+        </button>
+      </div>
+    </header>
+
+    <!-- ==============================================================
+         TACTICAL WORKSPACE GRID
+         ============================================================== -->
+    <main id="command-workspace">
+
+      <!-- LEFT PANEL: INCIDENTS & QUICK DISPATCH -->
+      <section class="panel" id="panel-incidents">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i data-lucide="alert-triangle"></i>
+            <span>Emergency Incident Triage</span>
+          </div>
+          <span id="active-incident-count" class="ticker-label">0 Active</span>
+        </div>
+
+        <div class="panel-body">
+          <!-- Quick Dispatch Box -->
+          <div class="quick-dispatch-box">
+            <div class="stat-header">Dispatch New Incident</div>
+            <form id="form-quick-dispatch" class="input-row">
+              <input 
+                type="number" 
+                id="input-incident-id" 
+                class="dispatch-input" 
+                placeholder="Incident ID (1-100000)" 
+                min="1" 
+                max="100000" 
+                required
+              >
+              <button type="submit" class="btn-dispatch">
+                <i data-lucide="send"></i> Dispatch
+              </button>
+            </form>
+          </div>
+
+          <!-- Active Incidents Feed -->
+          <div id="incidents-container" class="incident-list">
+            <div class="empty-placeholder">
+              <i data-lucide="inbox"></i>
+              <span>No active incidents. Enter an Incident ID above to triage & dispatch.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CENTER PANEL: SPATIAL TACTICAL MAP -->
+      <section id="map-viewport">
+        <div id="leaflet-map"></div>
+      </section>
+
+      <!-- RIGHT PANEL: FLEET & HOSPITAL CAPACITY -->
+      <section class="panel panel-right" id="panel-fleet">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i data-lucide="activity"></i>
+            <span>Fleet & Hospital Capacity</span>
+          </div>
+        </div>
+
+        <div class="panel-body">
+          <!-- Fleet Readiness Summary -->
+          <div class="fleet-grid">
+            <div class="fleet-stat-card">
+              <div class="stat-header">
+                <span>Available</span>
+                <i data-lucide="check-circle-2" style="color: var(--status-available);"></i>
+              </div>
+              <span id="stat-available" class="stat-number available">0</span>
+            </div>
+            <div class="fleet-stat-card">
+              <div class="stat-header">
+                <span>En Route</span>
+                <i data-lucide="navigation" style="color: var(--status-enroute);"></i>
+              </div>
+              <span id="stat-enroute" class="stat-number enroute">0</span>
+            </div>
+            <div class="fleet-stat-card">
+              <div class="stat-header">
+                <span>Busy</span>
+                <i data-lucide="clock" style="color: var(--status-busy);"></i>
+              </div>
+              <span id="stat-busy" class="stat-number busy">0</span>
+            </div>
+            <div class="fleet-stat-card">
+              <div class="stat-header">
+                <span>Maintenance</span>
+                <i data-lucide="wrench" style="color: var(--status-maintenance);"></i>
+              </div>
+              <span id="stat-maintenance" class="stat-number maintenance">0</span>
+            </div>
+          </div>
+
+          <!-- Hospital Capacity Saturation Feed -->
+          <div class="panel-title" style="margin-top: 8px;">
+            <i data-lucide="building-2"></i>
+            <span>Monitored Facilities</span>
+          </div>
+          <div id="hospitals-container" class="hospital-list">
+            <!-- Populated dynamically via JS -->
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ==============================================================
+         BOTTOM DRAWER: EVENT LOG & REDIRECTION AUDIT
+         ============================================================== -->
+    <footer id="bottom-drawer">
+      <!-- Left Column: Live Simulation Events -->
+      <div class="drawer-column">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i data-lucide="terminal"></i>
+            <span>Simulation Event Feed</span>
+          </div>
+          <button id="btn-schedule-event" class="btn-tactical" style="padding: 2px 8px; font-size: 10px;">
+            <i data-lucide="plus"></i> Inject Event
+          </button>
+        </div>
+        <div id="event-feed-container" class="event-feed">
+          <div class="empty-placeholder" style="padding: 10px;">Awaiting simulation events...</div>
+        </div>
+      </div>
+
+      <!-- Right Column: Redirection Decisions Audit -->
+      <div class="drawer-column">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i data-lucide="git-commit"></i>
+            <span>Redirection Audit Stream</span>
+          </div>
+          <span id="redirection-count" class="ticker-label">0 Redirections</span>
+        </div>
+        <div class="table-container">
+          <table class="tactical-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Incident</th>
+                <th>Original</th>
+                <th>New Hospital</th>
+                <th>ETA Saved</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody id="decisions-tbody">
+              <tr>
+                <td colspan="6" class="empty-placeholder" style="padding: 10px;">No redirection decisions recorded yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Main ES Module Bootstrap -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
