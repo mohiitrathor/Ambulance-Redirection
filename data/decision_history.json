@@ -1,0 +1,16 @@
+[
+    {
+        "incident_id": 1,
+        "time": 5,
+        "decision": "REDIRECTED",
+        "reason": "Hospital HOSP_182 is full.",
+        "original_hospital": "HOSP_182",
+        "new_hospital": "HOSP_054",
+        "eta_before": 32.97,
+        "eta_after": 32.97,
+        "eta_saved": 0.0,
+        "eta_improvement_percent": 0.0,
+        "severity": "Emergency",
+        "ambulance_id": "AMB_0575"
+    }
+]

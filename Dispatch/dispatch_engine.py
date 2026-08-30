@@ -13,25 +13,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 DATASET_DIR = ROOT / "Dataset"
 
-PATIENTS_PATH = (
-    DATASET_DIR
-    / "patient_incidents.csv"
-)
-
-AMBULANCES_PATH = (
-    DATASET_DIR
-    / "ambulances.csv"
-)
-
-SCENARIOS_PATH = (
-    DATASET_DIR
-    / "dispatch_scenarios.csv"
-)
-
-HOSPITALS_PATH = (
-    DATASET_DIR
-    / "hospitals.csv"
-)
+PATIENTS_PATH = DATASET_DIR / "patient_incidents.csv"
+AMBULANCES_PATH = DATASET_DIR / "ambulances.csv"
+SCENARIOS_PATH = DATASET_DIR / "dispatch_scenarios.csv"
+HOSPITALS_PATH = DATASET_DIR / "hospitals.csv"
 
 MODEL_PATH = (
     ROOT
@@ -61,7 +46,7 @@ AMBULANCE_CAPABILITY = {
 
 
 # ==============================================================
-# DATA
+# DATA LOADING
 # ==============================================================
 
 def load_data():
@@ -100,8 +85,13 @@ def load_data():
 # ==============================================================
 
 def required_ambulance_level(
-    severity
+    severity,
 ):
+    """
+    Determine the minimum ambulance
+    capability required for a predicted
+    severity.
+    """
 
     return {
         "Critical": 2,
@@ -110,7 +100,7 @@ def required_ambulance_level(
         "Low": 1,
         "Non-Urgent": 1,
     }.get(
-        severity,
+        str(severity),
         1,
     )
 
@@ -119,13 +109,21 @@ def predict_severity(
     model,
     incident,
 ):
+    """
+    Predict incident severity using the
+    trained ML model.
+
+    Returns:
+        predicted_severity
+        confidence
+        probabilities
+    """
 
     prediction = model.predict(
         incident
     )[0]
 
     confidence = None
-
     probabilities = None
 
     if hasattr(
@@ -151,7 +149,7 @@ def predict_severity(
 
 
 # ==============================================================
-# AMBULANCE
+# AMBULANCE SELECTION
 # ==============================================================
 
 def select_ambulance(
@@ -160,6 +158,15 @@ def select_ambulance(
     ambulances,
     scenarios,
 ):
+    """
+    Select the best available ambulance
+    for an incident.
+
+    Capability matching is preferred.
+    If no compatible ambulance exists,
+    the fastest available ambulance is
+    returned as a fallback.
+    """
 
     candidates = scenarios[
         scenarios["Incident_ID"]
@@ -169,11 +176,12 @@ def select_ambulance(
     if candidates.empty:
 
         raise ValueError(
-            f"No dispatch scenarios "
-            f"found for Incident_ID="
-            f"{incident_id}"
+            f"No dispatch scenarios found "
+            f"for Incident_ID={incident_id}"
         )
 
+    # Keep only the fleet columns needed
+    # for availability and capability.
     fleet = ambulances[
         [
             "Ambulance_ID",
@@ -182,9 +190,12 @@ def select_ambulance(
         ]
     ].copy()
 
+    # Avoid duplicate Ambulance_Type
+    # columns if the scenario dataset
+    # already contains one.
     candidates = candidates.drop(
         columns=[
-            "Ambulance_Type"
+            "Ambulance_Type",
         ],
         errors="ignore",
     )
@@ -195,10 +206,13 @@ def select_ambulance(
         how="inner",
     )
 
+    # Only currently available ambulances.
     candidates = candidates[
         candidates[
             "Availability"
-        ].astype(str).str.upper()
+        ]
+        .astype(str)
+        .str.upper()
         == "AVAILABLE"
     ].copy()
 
@@ -221,7 +235,9 @@ def select_ambulance(
         candidates[
             "Ambulance_Type"
         ]
-        .map(AMBULANCE_CAPABILITY)
+        .map(
+            AMBULANCE_CAPABILITY
+        )
         .fillna(0)
     )
 
@@ -240,11 +256,19 @@ def select_ambulance(
         ]
     ].copy()
 
+    # ----------------------------------------------------------
+    # CAPABILITY FIRST
+    # ----------------------------------------------------------
+
     fallback = compatible.empty
 
     if not fallback:
 
         candidates = compatible
+
+    # ----------------------------------------------------------
+    # ETA FIRST, DISTANCE SECOND
+    # ----------------------------------------------------------
 
     candidates = candidates.sort_values(
         by=[
@@ -270,13 +294,29 @@ def select_ambulance(
 
 
 # ==============================================================
-# HOSPITAL
+# HOSPITAL SUITABILITY
 # ==============================================================
 
 def hospital_suitability(
     condition,
     hospital_type,
 ):
+    """
+    Score hospital suitability based on
+    patient condition and hospital type.
+
+    3 = highly suitable
+    2 = suitable
+    1 = general/low suitability
+    """
+
+    condition = str(
+        condition
+    )
+
+    hospital_type = str(
+        hospital_type
+    )
 
     if condition == "Cardiac":
 
@@ -326,6 +366,10 @@ def hospital_suitability(
     return 1
 
 
+# ==============================================================
+# HOSPITAL SELECTION
+# ==============================================================
+
 def select_hospital(
     predicted_severity,
     condition,
@@ -333,8 +377,23 @@ def select_hospital(
     patient_lon,
     hospitals,
 ):
+    """
+    Select the most suitable hospital.
+
+    Priority:
+        1. Hospital suitability
+        2. Distance
+        3. ICU availability
+        4. Bed availability
+
+    Critical incidents require ICU availability.
+    """
 
     candidates = hospitals.copy()
+
+    # ----------------------------------------------------------
+    # CAPACITY
+    # ----------------------------------------------------------
 
     candidates[
         "Available_Beds"
@@ -362,6 +421,14 @@ def select_hospital(
         lower=0
     )
 
+    # ----------------------------------------------------------
+    # DISTANCE
+    #
+    # Approximation for initial simulation.
+    # The live system can later replace this
+    # with a routing API.
+    # ----------------------------------------------------------
+
     lat_difference = (
         float(patient_lat)
         - candidates["Latitude"]
@@ -382,6 +449,10 @@ def select_hospital(
         * 111
     )
 
+    # ----------------------------------------------------------
+    # SUITABILITY
+    # ----------------------------------------------------------
+
     candidates[
         "Suitability"
     ] = candidates[
@@ -394,11 +465,19 @@ def select_hospital(
         )
     )
 
+    # ----------------------------------------------------------
+    # BED AVAILABILITY
+    # ----------------------------------------------------------
+
     candidates = candidates[
         candidates[
             "Available_Beds"
         ] > 0
     ].copy()
+
+    # ----------------------------------------------------------
+    # ICU REQUIREMENT
+    # ----------------------------------------------------------
 
     if predicted_severity == "Critical":
 
@@ -414,6 +493,10 @@ def select_hospital(
             None,
             pd.DataFrame(),
         )
+
+    # ----------------------------------------------------------
+    # RANK
+    # ----------------------------------------------------------
 
     candidates = candidates.sort_values(
         by=[
@@ -439,12 +522,25 @@ def select_hospital(
 
 
 # ==============================================================
-# MAIN DISPATCH
+# MAIN DISPATCH FUNCTION
 # ==============================================================
 
 def dispatch_incident(
-    incident_id
+    incident_id,
 ):
+    """
+    Run the complete initial dispatch pipeline.
+
+    ML
+      ↓
+    Severity prediction
+      ↓
+    Ambulance selection
+      ↓
+    Hospital selection
+      ↓
+    Dispatch result
+    """
 
     (
         patients,
@@ -454,8 +550,14 @@ def dispatch_incident(
         model,
     ) = load_data()
 
+    # ----------------------------------------------------------
+    # FIND INCIDENT
+    # ----------------------------------------------------------
+
     incident_rows = patients[
-        patients["Incident_ID"]
+        patients[
+            "Incident_ID"
+        ]
         == incident_id
     ].copy()
 
@@ -465,6 +567,14 @@ def dispatch_incident(
             f"Incident_ID={incident_id} "
             f"was not found."
         )
+
+    incident = (
+        incident_rows.iloc[0]
+    )
+
+    # ----------------------------------------------------------
+    # MODEL INPUT
+    # ----------------------------------------------------------
 
     model_columns = getattr(
         model,
@@ -494,11 +604,13 @@ def dispatch_incident(
             )
         )
 
-    incident = incident_rows.iloc[0]
-
     model_input = incident_rows[
         list(model_columns)
     ]
+
+    # ----------------------------------------------------------
+    # ML PREDICTION
+    # ----------------------------------------------------------
 
     (
         predicted_severity,
@@ -508,6 +620,17 @@ def dispatch_incident(
         model,
         model_input,
     )
+
+    priority_number = (
+        SEVERITY_PRIORITY.get(
+            predicted_severity,
+            5,
+        )
+    )
+
+    # ----------------------------------------------------------
+    # AMBULANCE
+    # ----------------------------------------------------------
 
     (
         selected_ambulance,
@@ -519,9 +642,14 @@ def dispatch_incident(
         scenarios,
     )
 
+    # ----------------------------------------------------------
+    # NO AMBULANCE
+    # ----------------------------------------------------------
+
     if selected_ambulance is None:
 
         return {
+
             "status":
                 "NO_AMBULANCE_AVAILABLE",
 
@@ -535,44 +663,66 @@ def dispatch_incident(
                 confidence,
 
             "patient": {
+
                 "condition":
                     str(
-                        incident["Condition"]
+                        incident[
+                            "Condition"
+                        ]
                     ),
 
                 "predicted_severity":
                     predicted_severity,
 
                 "priority":
-                    f"P{SEVERITY_PRIORITY.get(
-                        predicted_severity,
-                        5,
-                    )}",
+                    f"P{priority_number}",
 
                 "confidence":
                     confidence,
             },
 
-            "ambulance": None,
-            "hospital": None,
+            "ambulance":
+                None,
+
+            "hospital":
+                None,
         }
+
+    # ----------------------------------------------------------
+    # HOSPITAL
+    # ----------------------------------------------------------
 
     (
         selected_hospital,
         hospital_candidates,
     ) = select_hospital(
+
         predicted_severity,
+
         str(
-            incident["Condition"]
+            incident[
+                "Condition"
+            ]
         ),
+
         float(
-            incident["Patient_Lat"]
+            incident[
+                "Patient_Lat"
+            ]
         ),
+
         float(
-            incident["Patient_Lon"]
+            incident[
+                "Patient_Lon"
+            ]
         ),
+
         hospitals,
     )
+
+    # ----------------------------------------------------------
+    # BUILD RESULT
+    # ----------------------------------------------------------
 
     result = {
 
@@ -586,17 +736,16 @@ def dispatch_incident(
 
             "condition":
                 str(
-                    incident["Condition"]
+                    incident[
+                        "Condition"
+                    ]
                 ),
 
             "predicted_severity":
                 predicted_severity,
 
             "priority":
-                f"P{SEVERITY_PRIORITY.get(
-                    predicted_severity,
-                    5,
-                )}",
+                f"P{priority_number}",
 
             "confidence":
                 confidence,
@@ -634,16 +783,18 @@ def dispatch_incident(
 
             "traffic":
                 str(
-                    selected_ambulance[
-                        "Traffic_Level"
-                    ]
+                    selected_ambulance.get(
+                        "Traffic_Level",
+                        "NORMAL",
+                    )
                 ),
 
             "road_condition":
                 str(
-                    selected_ambulance[
-                        "Road_Condition"
-                    ]
+                    selected_ambulance.get(
+                        "Road_Condition",
+                        "GOOD",
+                    )
                 ),
 
             "capability_match":
@@ -661,12 +812,19 @@ def dispatch_incident(
                 ),
         },
 
-        "hospital": None,
+        "hospital":
+            None,
     }
+
+    # ----------------------------------------------------------
+    # HOSPITAL RESULT
+    # ----------------------------------------------------------
 
     if selected_hospital is not None:
 
-        result["hospital"] = {
+        result[
+            "hospital"
+        ] = {
 
             "hospital_id":
                 str(
@@ -711,14 +869,22 @@ def dispatch_incident(
                 ),
         }
 
+    else:
+
+        result["status"] = (
+            "NO_SUITABLE_HOSPITAL"
+        )
+
     return result
 
 
 # ==============================================================
-# DISPLAY
+# PRINT DISPATCH
 # ==============================================================
 
-def print_dispatch(result):
+def print_dispatch(
+    result,
+):
 
     print()
     print("=" * 70)
@@ -750,12 +916,18 @@ def print_dispatch(result):
         f"{patient.get('priority', '-')}"
     )
 
-    print(
-        f"Confidence:     "
-        f"{(
-            patient.get('confidence') or 0
-        ):.2%}"
+    confidence = (
+        patient.get(
+            "confidence"
+        )
     )
+
+    if confidence is not None:
+
+        print(
+            f"Confidence:     "
+            f"{confidence:.2%}"
+        )
 
     ambulance = result.get(
         "ambulance"
@@ -787,6 +959,28 @@ def print_dispatch(result):
             f"{ambulance['distance_km']:.2f} km"
         )
 
+        print(
+            f"Capability:     "
+            f"{'MATCH' if ambulance['capability_match'] else 'FALLBACK'}"
+        )
+
+        print(
+            f"Traffic:        "
+            f"{ambulance['traffic']}"
+        )
+
+        print(
+            f"Road:           "
+            f"{ambulance['road_condition']}"
+        )
+
+    else:
+
+        print()
+        print(
+            "AMBULANCE: NONE AVAILABLE"
+        )
+
     hospital = result.get(
         "hospital"
     )
@@ -808,6 +1002,11 @@ def print_dispatch(result):
         )
 
         print(
+            f"Distance:       "
+            f"{hospital['distance_km']:.2f} km"
+        )
+
+        print(
             f"Available beds: "
             f"{hospital['available_beds']}"
         )
@@ -817,8 +1016,30 @@ def print_dispatch(result):
             f"{hospital['available_icu']}"
         )
 
+        print(
+            f"Suitability:    "
+            f"{hospital['suitability']}/3"
+        )
+
+    else:
+
+        print()
+        print(
+            "HOSPITAL: NONE SUITABLE"
+        )
+
+    print()
+    print(
+        f"Status:         "
+        f"{result['status']}"
+    )
+
     print("=" * 70)
 
+
+# ==============================================================
+# DIRECT TEST
+# ==============================================================
 
 if __name__ == "__main__":
 

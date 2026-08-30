@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, Dict, List, Optional
 
 
 # ==============================================================
@@ -7,16 +7,16 @@ from typing import Any, Callable
 # ==============================================================
 
 @dataclass(order=True)
-class SimulationEvent:
-
+class Event:
     time: int
-
-    event_type: str = field(
-        compare=False
-    )
-
-    data: dict[str, Any] = field(
+    sequence: int
+    event_type: str = field(compare=False)
+    data: Dict[str, Any] = field(
         default_factory=dict,
+        compare=False,
+    )
+    processed: bool = field(
+        default=False,
         compare=False,
     )
 
@@ -29,117 +29,243 @@ class EventEngine:
 
     def __init__(self):
 
-        self.events = []
-        self.handlers = {}
+        self.events: List[Event] = []
+
+        self.handlers: Dict[
+            str,
+            Callable[[Dict[str, Any]], Any],
+        ] = {}
+
+        self._sequence = 0
 
     # ----------------------------------------------------------
-    # HANDLERS
+    # REGISTER HANDLER
     # ----------------------------------------------------------
 
     def register_handler(
         self,
         event_type: str,
-        handler: Callable,
+        handler: Callable[
+            [Dict[str, Any]],
+            Any,
+        ],
     ):
 
         self.handlers[
-            event_type
+            str(event_type).upper()
         ] = handler
 
     # ----------------------------------------------------------
-    # SCHEDULE
+    # SCHEDULE EVENT
     # ----------------------------------------------------------
 
     def schedule(
         self,
         time: int,
         event_type: str,
-        data=None,
+        data: Optional[
+            Dict[str, Any]
+        ] = None,
     ):
 
-        event = SimulationEvent(
+        event = Event(
             time=int(time),
-            event_type=str(event_type),
+            sequence=self._sequence,
+            event_type=str(
+                event_type
+            ).upper(),
             data=data or {},
         )
 
+        self._sequence += 1
+
         self.events.append(event)
+
         self.events.sort()
 
+        return event
+
     # ----------------------------------------------------------
-    # READY EVENTS
+    # PROCESS EVENTS
     # ----------------------------------------------------------
 
-    def get_events_at(self, time: int):
+    def process(
+        self,
+        current_time: int,
+    ):
 
-        ready = []
-        remaining = []
+        processed = []
 
         for event in self.events:
 
-            if event.time <= time:
-                ready.append(event)
+            if event.processed:
+                continue
 
-            else:
-                remaining.append(event)
-
-        self.events = remaining
-
-        return ready
-
-    # ----------------------------------------------------------
-    # PROCESS
-    # ----------------------------------------------------------
-
-    def process(self, time: int):
-
-        results = []
-
-        for event in self.get_events_at(time):
+            if event.time > current_time:
+                continue
 
             handler = self.handlers.get(
                 event.event_type
             )
 
-            if handler is None:
+            if handler is not None:
 
-                results.append({
-                    "event": event,
-                    "handled": False,
-                    "message": (
-                        f"No handler registered "
-                        f"for {event.event_type}"
-                    ),
-                })
+                try:
+                    handler(event.data)
 
-                continue
+                except Exception as error:
 
-            try:
+                    # Keep the simulation alive.
+                    # The simulator can record the
+                    # failure if desired.
+                    event.data[
+                        "_error"
+                    ] = str(error)
 
-                result = handler(
-                    event.data
-                )
+            event.processed = True
 
-                results.append({
-                    "event": event,
-                    "handled": True,
-                    "result": result,
-                })
+            processed.append(event)
 
-            except Exception as error:
-
-                results.append({
-                    "event": event,
-                    "handled": False,
-                    "error": str(error),
-                })
-
-        return results
+        return processed
 
     # ----------------------------------------------------------
-    # PENDING
+    # PENDING EVENTS
     # ----------------------------------------------------------
 
-    def pending_events(self):
+    def get_pending_events(self):
+
+        return [
+            event
+            for event in self.events
+            if not event.processed
+        ]
+
+    # ----------------------------------------------------------
+    # ALL EVENTS
+    # ----------------------------------------------------------
+
+    def get_events(self):
 
         return list(self.events)
+
+    # ----------------------------------------------------------
+    # CLEAR PROCESSED EVENTS
+    # ----------------------------------------------------------
+
+    def clear_processed(self):
+
+        self.events = [
+            event
+            for event in self.events
+            if not event.processed
+        ]
+
+    # ----------------------------------------------------------
+    # RESET
+    # ----------------------------------------------------------
+
+    def reset(self):
+
+        self.events.clear()
+
+        self._sequence = 0
+
+    # ----------------------------------------------------------
+    # DEBUG
+    # ----------------------------------------------------------
+
+    def print_pending(self):
+
+        print()
+        print("=" * 70)
+        print("PENDING EVENTS")
+        print("=" * 70)
+
+        pending = self.get_pending_events()
+
+        if not pending:
+
+            print("No pending events.")
+
+        else:
+
+            for event in pending:
+
+                print(
+                    f"[{event.time:>3} min] "
+                    f"{event.event_type} "
+                    f"{event.data}"
+                )
+
+        print("=" * 70)
+
+
+# ==============================================================
+# BASIC TEST
+# ==============================================================
+
+if __name__ == "__main__":
+
+    print("=" * 70)
+    print("EVENT ENGINE TEST")
+    print("=" * 70)
+
+    engine = EventEngine()
+
+    received = []
+
+    def test_handler(data):
+
+        received.append(data)
+
+        print(
+            f"EVENT: "
+            f"{data.get('message', 'received')}"
+        )
+
+    engine.register_handler(
+        "TEST_EVENT",
+        test_handler,
+    )
+
+    engine.schedule(
+        time=3,
+        event_type="TEST_EVENT",
+        data={
+            "message": "First event",
+        },
+    )
+
+    engine.schedule(
+        time=5,
+        event_type="TEST_EVENT",
+        data={
+            "message": "Second event",
+        },
+    )
+
+    for minute in range(7):
+
+        print()
+        print(
+            f"TIME: {minute} min"
+        )
+
+        events = engine.process(
+            minute
+        )
+
+        for event in events:
+
+            print(
+                f"Processed: "
+                f"{event.event_type}"
+            )
+
+    print()
+    print(
+        f"Events received: "
+        f"{len(received)}"
+    )
+
+    print("=" * 70)

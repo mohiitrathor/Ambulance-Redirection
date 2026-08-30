@@ -4,31 +4,26 @@ import sys
 import pandas as pd
 
 
-ROOT = Path(
-    __file__
-).resolve().parents[1]
+# ==============================================================
+# PATHS
+# ==============================================================
 
-sys.path.insert(
-    0,
-    str(ROOT / "Dispatch"),
-)
+ROOT = Path(__file__).resolve().parents[1]
+
+DISPATCH_DIR = ROOT / "Dispatch"
+DATASET_DIR = ROOT / "Dataset"
+
+if str(DISPATCH_DIR) not in sys.path:
+    sys.path.insert(0, str(DISPATCH_DIR))
 
 
-from dispatch_engine import (
-    dispatch_incident,
-)
+# ==============================================================
+# DISPATCH MODULES
+# ==============================================================
 
-from redirection_engine import (
-    evaluate_redirection,
-)
-
-from events import (
-    EventEngine,
-)
-
-from decision_logger import (
-    DecisionLogger,
-)
+from dispatch_engine import dispatch_incident
+from redirection_engine import check_live_redirection
+from events import EventEngine
 
 from state import (
     DispatchState,
@@ -37,29 +32,8 @@ from state import (
     HospitalState,
 )
 
-
-# ==============================================================
-# PATHS
-# ==============================================================
-
-DATASET_DIR = (
-    ROOT / "Dataset"
-)
-
-PATIENTS_PATH = (
-    DATASET_DIR
-    / "patient_incidents.csv"
-)
-
-AMBULANCES_PATH = (
-    DATASET_DIR
-    / "ambulances.csv"
-)
-
-HOSPITALS_PATH = (
-    DATASET_DIR
-    / "hospitals.csv"
-)
+from decision_logger import DecisionLogger
+from simulation_output import SimulationOutput
 
 
 # ==============================================================
@@ -68,54 +42,60 @@ HOSPITALS_PATH = (
 
 class Simulator:
 
-    ETA_CHANGE_THRESHOLD_PERCENT = 25
-    ETA_CHANGE_THRESHOLD_MINUTES = 10
+    ETA_CHANGE_THRESHOLD_PERCENT = 25.0
+    ETA_CHANGE_THRESHOLD_MINUTES = 10.0
+
+    MIN_REDIRECTION_IMPROVEMENT_MINUTES = 5.0
+    MIN_REDIRECTION_IMPROVEMENT_PERCENT = 20.0
 
     def __init__(self):
 
         self.state = DispatchState()
-
         self.events = EventEngine()
 
-        self.decision_logger = (
-            DecisionLogger()
-        )
+        self.logger = DecisionLogger()
+        self.output = SimulationOutput()
+
+        # ------------------------------------------------------
+        # DATASETS
+        # ------------------------------------------------------
 
         self.patients = pd.read_csv(
-            PATIENTS_PATH
+            DATASET_DIR / "patient_incidents.csv"
         )
 
         self.ambulances = pd.read_csv(
-            AMBULANCES_PATH
+            DATASET_DIR / "ambulances.csv"
         )
 
         self.hospitals = pd.read_csv(
-            HOSPITALS_PATH
+            DATASET_DIR / "hospitals.csv"
         )
 
-        # Each incident keeps track of
-        # hospitals it has already visited.
-        self.redirect_history = {}
+        # ------------------------------------------------------
+        # RUNTIME TRACKING
+        # ------------------------------------------------------
 
-        # Incidents requiring an ETA review.
+        self.redirect_history = {}
+        self.last_known_eta = {}
         self.eta_recheck_required = set()
 
-        self.load_state()
+        # ------------------------------------------------------
+        # INITIALIZE
+        # ------------------------------------------------------
 
+        self.load_state()
         self.register_event_handlers()
 
     # ==========================================================
-    # LOAD STATE
+    # STATE LOADING
     # ==========================================================
 
     def load_state(self):
 
-        for _, row in (
-            self.ambulances.iterrows()
-        ):
+        for _, row in self.ambulances.iterrows():
 
             ambulance = AmbulanceState(
-
                 ambulance_id=str(
                     row["Ambulance_ID"]
                 ),
@@ -135,32 +115,15 @@ class Simulator:
                 status=str(
                     row["Availability"]
                 ).upper(),
-
-                traffic_level=str(
-                    row.get(
-                        "Traffic_Level",
-                        "NORMAL",
-                    )
-                ).upper(),
-
-                road_condition=str(
-                    row.get(
-                        "Road_Condition",
-                        "GOOD",
-                    )
-                ).upper(),
             )
 
             self.state.add_ambulance(
                 ambulance
             )
 
-        for _, row in (
-            self.hospitals.iterrows()
-        ):
+        for _, row in self.hospitals.iterrows():
 
             hospital = HospitalState(
-
                 hospital_id=str(
                     row["Hospital_ID"]
                 ),
@@ -225,11 +188,6 @@ class Simulator:
         )
 
         self.events.register_handler(
-            "ROAD_CONDITION_CHANGE",
-            self.handle_road_condition_change,
-        )
-
-        self.events.register_handler(
             "NEW_INCIDENT",
             self.handle_new_incident,
         )
@@ -245,52 +203,38 @@ class Simulator:
 
     def schedule_default_events(self):
 
-        # Hospital becomes full.
         self.events.schedule(
             time=5,
             event_type="HOSPITAL_FULL",
             data={
-                "hospital_id":
-                    "HOSP_182"
+                "hospital_id": "HOSP_182"
             },
         )
 
-        # Major traffic deterioration.
         self.events.schedule(
             time=7,
             event_type="TRAFFIC_CHANGE",
             data={
-                "ambulance_id":
-                    "AMB_0575",
-
-                "level":
-                    "SEVERE",
+                "ambulance_id": "AMB_0575",
+                "level": "SEVERE",
             },
         )
 
-        # ICU availability changes.
         self.events.schedule(
             time=9,
             event_type="ICU_LOAD_CHANGE",
             data={
-                "hospital_id":
-                    "HOSP_279",
-
-                "increase":
-                    10,
+                "hospital_id": "HOSP_279",
+                "increase": 10,
             },
         )
 
-        # Hospital load changes.
         self.events.schedule(
             time=11,
             event_type="HOSPITAL_LOAD_CHANGE",
             data={
-                "hospital_id":
-                    "HOSP_099",
-
-                "increase":
-                    20,
+                "hospital_id": "HOSP_099",
+                "increase": 20,
             },
         )
 
@@ -303,19 +247,18 @@ class Simulator:
         incident_id,
     ):
 
+        incident_id = int(
+            incident_id
+        )
+
         rows = self.patients[
-            self.patients[
-                "Incident_ID"
-            ]
+            self.patients["Incident_ID"]
             == incident_id
         ]
 
         if rows.empty:
-
             raise ValueError(
-                f"Incident "
-                f"{incident_id} "
-                f"not found."
+                f"Incident {incident_id} not found."
             )
 
         row = rows.iloc[0]
@@ -324,7 +267,7 @@ class Simulator:
             incident_id
         )
 
-        patient = result.get(
+        patient_data = result.get(
             "patient",
             {},
         )
@@ -337,28 +280,35 @@ class Simulator:
             "hospital"
         )
 
-        severity = patient.get(
-            "predicted_severity",
-            "Unknown",
-        )
-
-        priority = int(
-            str(
-                patient.get(
-                    "priority",
-                    "P5",
-                )
-            ).replace(
-                "P",
-                "",
+        severity = str(
+            patient_data.get(
+                "predicted_severity",
+                "Unknown",
             )
         )
 
-        incident = IncidentState(
+        priority_text = str(
+            patient_data.get(
+                "priority",
+                "P5",
+            )
+        )
 
-            incident_id=int(
-                incident_id
-            ),
+        try:
+
+            priority = int(
+                priority_text.replace(
+                    "P",
+                    "",
+                )
+            )
+
+        except ValueError:
+
+            priority = 5
+
+        incident = IncidentState(
+            incident_id=incident_id,
 
             condition=str(
                 row["Condition"]
@@ -368,11 +318,7 @@ class Simulator:
 
             priority=priority,
 
-            status=(
-                "DISPATCHED"
-                if ambulance_data
-                else "WAITING"
-            ),
+            status="DISPATCHED",
         )
 
         self.state.add_incident(
@@ -380,7 +326,7 @@ class Simulator:
         )
 
         # ------------------------------------------------------
-        # AMBULANCE
+        # Ambulance
         # ------------------------------------------------------
 
         if ambulance_data:
@@ -399,12 +345,10 @@ class Simulator:
 
             if ambulance:
 
-                ambulance.status = (
-                    "EN_ROUTE"
-                )
+                ambulance.status = "EN_ROUTE"
 
                 ambulance.incident_id = (
-                    int(incident_id)
+                    incident_id
                 )
 
                 ambulance.base_eta_minutes = (
@@ -415,22 +359,24 @@ class Simulator:
                     )
                 )
 
-                ambulance.traffic_level = (
-                    str(
-                        ambulance_data.get(
-                            "traffic",
-                            "NORMAL",
-                        )
-                    ).upper()
-                )
+                ambulance.traffic_level = str(
+                    ambulance_data.get(
+                        "traffic_level",
+                        "NORMAL",
+                    )
+                ).upper()
 
-                ambulance.road_condition = (
-                    str(
-                        ambulance_data.get(
-                            "road_condition",
-                            "GOOD",
-                        )
-                    ).upper()
+                ambulance.road_condition = str(
+                    ambulance_data.get(
+                        "road_condition",
+                        "GOOD",
+                    )
+                ).upper()
+
+                ambulance.route_distance_km = (
+                    ambulance_data.get(
+                        "distance_km"
+                    )
                 )
 
                 ambulance.recalculate_eta()
@@ -439,8 +385,12 @@ class Simulator:
                     ambulance_id
                 )
 
+                self.last_known_eta[
+                    incident_id
+                ] = ambulance.eta_minutes
+
         # ------------------------------------------------------
-        # HOSPITAL
+        # Hospital
         # ------------------------------------------------------
 
         if hospital_data:
@@ -468,19 +418,15 @@ class Simulator:
                 )
 
         # ------------------------------------------------------
-        # HISTORY
+        # Redirect history
         # ------------------------------------------------------
 
         self.redirect_history[
-            int(incident_id)
-        ] = {
-            str(incident.hospital_id)
-        }
+            incident_id
+        ] = set()
 
         self.state.add_event(
-            f"Incident "
-            f"{incident_id} "
-            f"dispatched."
+            f"Incident {incident_id} dispatched."
         )
 
         return result
@@ -512,13 +458,11 @@ class Simulator:
         )
 
         self.state.add_event(
-            f"Hospital "
-            f"{hospital_id} "
-            f"became full."
+            f"Hospital {hospital_id} became full."
         )
 
     # ==========================================================
-    # HOSPITAL LOAD
+    # HOSPITAL LOAD CHANGE
     # ==========================================================
 
     def handle_hospital_load_change(
@@ -548,19 +492,16 @@ class Simulator:
 
         hospital.current_load = min(
             hospital.capacity,
-            hospital.current_load
-            + increase,
+            hospital.current_load + increase,
         )
 
         self.state.add_event(
-            f"Hospital "
-            f"{hospital_id} "
-            f"load increased by "
-            f"{increase}."
+            f"Hospital {hospital_id} "
+            f"load increased by {increase}."
         )
 
     # ==========================================================
-    # ICU LOAD
+    # ICU LOAD CHANGE
     # ==========================================================
 
     def handle_icu_load_change(
@@ -590,19 +531,16 @@ class Simulator:
 
         hospital.current_icu_load = min(
             hospital.icu_capacity,
-            hospital.current_icu_load
-            + increase,
+            hospital.current_icu_load + increase,
         )
 
         self.state.add_event(
-            f"Hospital "
-            f"{hospital_id} "
-            f"ICU load increased by "
-            f"{increase}."
+            f"Hospital {hospital_id} "
+            f"ICU load increased by {increase}."
         )
 
     # ==========================================================
-    # TRAFFIC
+    # TRAFFIC CHANGE
     # ==========================================================
 
     def handle_traffic_change(
@@ -627,19 +565,26 @@ class Simulator:
         if ambulance is None:
             return
 
-        old_eta = (
-            ambulance.eta_minutes
-        )
+        if ambulance.status != "EN_ROUTE":
 
-        ambulance.traffic_level = (
-            level
-        )
+            self.state.add_event(
+                f"Traffic event ignored for "
+                f"{ambulance_id}; ambulance is "
+                f"{ambulance.status}."
+            )
+
+            return
+
+        old_eta = ambulance.eta_minutes
+
+        ambulance.traffic_level = level
 
         ambulance.recalculate_eta()
 
-        new_eta = (
-            ambulance.eta_minutes
-        )
+        new_eta = ambulance.eta_minutes
+
+        if old_eta is None or new_eta is None:
+            return
 
         self.state.add_event(
             f"Traffic for ambulance "
@@ -649,124 +594,42 @@ class Simulator:
             f"{new_eta:.1f} min."
         )
 
-        if (
-            old_eta is None
-            or new_eta is None
-        ):
-            return
-
-        increase = (
+        eta_increase = (
             new_eta - old_eta
         )
 
-        percentage = (
-            increase
+        if eta_increase <= 0:
+            return
+
+        percent_increase = (
+            eta_increase
             / max(old_eta, 1)
         ) * 100
 
         if (
-            increase
-            >= self.ETA_CHANGE_THRESHOLD_MINUTES
-            or
-            percentage
+            percent_increase
             >= self.ETA_CHANGE_THRESHOLD_PERCENT
+            or
+            eta_increase
+            >= self.ETA_CHANGE_THRESHOLD_MINUTES
         ):
 
-            if (
-                ambulance.incident_id
-                is not None
-            ):
+            if ambulance.incident_id is not None:
+
+                incident_id = int(
+                    ambulance.incident_id
+                )
 
                 self.eta_recheck_required.add(
-                    ambulance.incident_id
+                    incident_id
                 )
 
                 self.state.add_event(
-                    f"ETA deterioration "
-                    f"detected for incident "
-                    f"{ambulance.incident_id}. "
-                    f"Hospital destination "
-                    f"will be re-evaluated."
-                )
-
-    # ==========================================================
-    # ROAD CONDITION
-    # ==========================================================
-
-    def handle_road_condition_change(
-        self,
-        data,
-    ):
-
-        ambulance_id = str(
-            data["ambulance_id"]
-        )
-
-        condition = str(
-            data["condition"]
-        ).upper()
-
-        ambulance = (
-            self.state.ambulances.get(
-                ambulance_id
-            )
-        )
-
-        if ambulance is None:
-            return
-
-        old_eta = (
-            ambulance.eta_minutes
-        )
-
-        ambulance.road_condition = (
-            condition
-        )
-
-        ambulance.recalculate_eta()
-
-        new_eta = (
-            ambulance.eta_minutes
-        )
-
-        self.state.add_event(
-            f"Road condition for "
-            f"{ambulance_id} changed to "
-            f"{condition}. ETA changed from "
-            f"{old_eta:.1f} to "
-            f"{new_eta:.1f} min."
-        )
-
-        if (
-            old_eta is None
-            or new_eta is None
-        ):
-            return
-
-        increase = (
-            new_eta - old_eta
-        )
-
-        percentage = (
-            increase
-            / max(old_eta, 1)
-        ) * 100
-
-        if (
-            increase
-            >= self.ETA_CHANGE_THRESHOLD_MINUTES
-            or
-            percentage
-            >= self.ETA_CHANGE_THRESHOLD_PERCENT
-        ):
-
-            if (
-                ambulance.incident_id
-                is not None
-            ):
-
-                self.eta_recheck_required.add(
-                    ambulance.incident_id
+                    f"ETA deterioration detected "
+                    f"for incident "
+                    f"{incident_id}. "
+                    f"Hospital destination will "
+                    f"be re-evaluated."
                 )
 
     # ==========================================================
@@ -782,9 +645,7 @@ class Simulator:
             data["incident_id"]
         )
 
-        if incident_id in (
-            self.state.incidents
-        ):
+        if incident_id in self.state.incidents:
             return
 
         self.create_incident(
@@ -792,7 +653,7 @@ class Simulator:
         )
 
     # ==========================================================
-    # AMBULANCE STATUS
+    # AMBULANCE STATUS CHANGE
     # ==========================================================
 
     def handle_ambulance_status_change(
@@ -820,20 +681,23 @@ class Simulator:
         ambulance.status = status
 
         self.state.add_event(
-            f"Ambulance "
-            f"{ambulance_id} "
-            f"status changed to "
-            f"{status}."
+            f"Ambulance {ambulance_id} "
+            f"status changed to {status}."
         )
 
     # ==========================================================
-    # TIME
-    # ==========================================================
+    # ADVANCE TIME
+    # ==============================================================
 
     def advance_time(
         self,
         minutes=1,
     ):
+
+        minutes = max(
+            0,
+            int(minutes),
+        )
 
         self.state.advance_time(
             minutes
@@ -843,32 +707,22 @@ class Simulator:
             self.state.ambulances.values()
         ):
 
-            if (
-                ambulance.status
-                != "EN_ROUTE"
-            ):
+            if ambulance.status != "EN_ROUTE":
                 continue
 
-            if (
-                ambulance.eta_minutes
-                is None
-            ):
+            if ambulance.eta_minutes is None:
                 continue
 
             ambulance.eta_minutes = max(
                 0,
-                ambulance.eta_minutes
-                - minutes,
+                ambulance.eta_minutes - minutes,
             )
 
-            if (
-                ambulance.eta_minutes
-                <= 0
-            ):
+            if ambulance.eta_minutes <= 0:
 
-                ambulance.status = (
-                    "ARRIVED"
-                )
+                ambulance.eta_minutes = 0
+
+                ambulance.status = "ARRIVED"
 
                 incident = (
                     self.state.incidents.get(
@@ -878,9 +732,7 @@ class Simulator:
 
                 if incident:
 
-                    incident.status = (
-                        "ARRIVED"
-                    )
+                    incident.status = "ARRIVED"
 
                 self.state.add_event(
                     f"Ambulance "
@@ -889,43 +741,189 @@ class Simulator:
                     f"{ambulance.hospital_id}."
                 )
 
+                continue
+
+            if ambulance.incident_id is not None:
+
+                self.last_known_eta[
+                    ambulance.incident_id
+                ] = ambulance.eta_minutes
+
     # ==========================================================
-    # APPLY REDIRECTION
+    # ETA RECHECK
     # ==========================================================
 
-    def apply_redirection(
+    def should_recheck_eta(
         self,
         incident,
-        decision,
     ):
 
-        alternative = (
-            decision.get(
-                "alternative_hospital"
+        return (
+            incident.incident_id
+            in self.eta_recheck_required
+        )
+
+    # ==========================================================
+    # CALCULATE ETA TO HOSPITAL
+    # ==========================================================
+
+    def calculate_hospital_eta(
+        self,
+        ambulance,
+        hospital,
+    ):
+
+        try:
+
+            return float(
+                ambulance.estimate_eta_to_hospital(
+                    hospital
+                )
+            )
+
+        except (
+            AttributeError,
+            TypeError,
+            ValueError,
+        ):
+
+            try:
+
+                return float(
+                    ambulance.calculate_eta_to_hospital(
+                        hospital
+                    )
+                )
+
+            except (
+                AttributeError,
+                TypeError,
+                ValueError,
+            ):
+
+                return None
+
+    # ==========================================================
+    # ETA-BASED REDIRECTION
+    # ==========================================================
+
+    def check_eta_redirection(
+        self,
+        incident,
+    ):
+
+        ambulance = (
+            self.state.ambulances.get(
+                incident.ambulance_id
             )
         )
 
-        if alternative is None:
+        if ambulance is None:
             return False
 
-        new_hospital_id = str(
-            alternative[
-                "hospital_id"
-            ]
+        if ambulance.status != "EN_ROUTE":
+            return False
+
+        current_hospital = (
+            self.state.hospitals.get(
+                incident.hospital_id
+            )
         )
+
+        if current_hospital is None:
+            return False
+
+        current_eta = (
+            ambulance.eta_minutes
+        )
+
+        if current_eta is None:
+            return False
+
+        candidates = []
+
+        for hospital in (
+            self.state.hospitals.values()
+        ):
+
+            if (
+                hospital.hospital_id
+                == current_hospital.hospital_id
+            ):
+                continue
+
+            if hospital.available_beds <= 0:
+                continue
+
+            if (
+                incident.severity == "Critical"
+                and hospital.available_icu <= 0
+            ):
+                continue
+
+            eta = self.calculate_hospital_eta(
+                ambulance,
+                hospital,
+            )
+
+            if eta is None:
+                continue
+
+            candidates.append(
+                (
+                    eta,
+                    hospital,
+                )
+            )
+
+        if not candidates:
+            return False
+
+        candidates.sort(
+            key=lambda item: item[0]
+        )
+
+        best_eta, best_hospital = (
+            candidates[0]
+        )
+
+        # ------------------------------------------------------
+        # Never redirect to a slower hospital.
+        # ------------------------------------------------------
+
+        if best_eta >= current_eta:
+            return False
+
+        improvement = (
+            current_eta - best_eta
+        )
+
+        improvement_percent = (
+            improvement
+            / max(current_eta, 1)
+        ) * 100
+
+        # ------------------------------------------------------
+        # Require meaningful improvement.
+        # ------------------------------------------------------
+
+        if (
+            improvement
+            < self.MIN_REDIRECTION_IMPROVEMENT_MINUTES
+            and
+            improvement_percent
+            < self.MIN_REDIRECTION_IMPROVEMENT_PERCENT
+        ):
+            return False
 
         old_hospital_id = str(
             incident.hospital_id
         )
 
-        # Never redirect to the same hospital.
-        if (
-            new_hospital_id
-            == old_hospital_id
-        ):
-            return False
+        new_hospital_id = str(
+            best_hospital.hospital_id
+        )
 
-        # Prevent loops.
         history = (
             self.redirect_history.setdefault(
                 incident.incident_id,
@@ -934,76 +932,47 @@ class Simulator:
         )
 
         if new_hospital_id in history:
-
-            self.state.add_event(
-                f"Redirection skipped for "
-                f"incident "
-                f"{incident.incident_id}: "
-                f"{new_hospital_id} was "
-                f"already visited."
-            )
-
             return False
 
-        ambulance = (
-            self.state.ambulances.get(
-                incident.ambulance_id
-            )
-        )
+        # ------------------------------------------------------
+        # Record old destination.
+        # ------------------------------------------------------
 
-        eta_before = decision.get(
-            "eta_before"
-        )
-
-        eta_after = decision.get(
-            "eta_after"
+        history.add(
+            old_hospital_id
         )
 
         # ------------------------------------------------------
-        # APPLY
+        # Apply new destination.
         # ------------------------------------------------------
 
         incident.hospital_id = (
             new_hospital_id
         )
 
-        incident.status = (
-            "REDIRECTED"
-        )
+        incident.status = "REDIRECTED"
 
-        if ambulance:
-
-            ambulance.hospital_id = (
-                new_hospital_id
-            )
-
-            if eta_after is not None:
-
-                ambulance.eta_minutes = (
-                    float(eta_after)
-                )
-
-        history.add(
+        ambulance.hospital_id = (
             new_hospital_id
         )
 
+        ambulance.eta_minutes = (
+            best_eta
+        )
+
         # ------------------------------------------------------
-        # LOG
+        # Log.
         # ------------------------------------------------------
 
-        self.decision_logger.log_redirection(
+        self.logger.log_redirection(
+            incident_id=incident.incident_id,
 
-            incident_id=(
-                incident.incident_id
-            ),
+            current_time=self.state.current_time,
 
-            current_time=(
-                self.state.current_time
-            ),
-
-            reason=decision.get(
-                "reason",
-                "Dynamic redirection.",
+            reason=(
+                "ETA deterioration caused by "
+                f"{ambulance.traffic_level.lower()} "
+                "traffic."
             ),
 
             original_hospital=(
@@ -1014,58 +983,276 @@ class Simulator:
                 new_hospital_id
             ),
 
+            eta_before=current_eta,
+
+            eta_after=best_eta,
+
+            severity=incident.severity,
+
+            ambulance_id=ambulance.ambulance_id,
+        )
+
+        self.state.add_event(
+            f"Incident "
+            f"{incident.incident_id} "
+            f"redirected from "
+            f"{old_hospital_id} to "
+            f"{new_hospital_id}. "
+            f"ETA improved from "
+            f"{current_eta:.1f} to "
+            f"{best_eta:.1f} min."
+        )
+
+        return True
+
+    # ==========================================================
+    # HOSPITAL-FAILURE REDIRECTION
+    # ==========================================================
+
+    def check_hospital_redirection(
+        self,
+        incident,
+    ):
+
+        if incident.hospital_id is None:
+            return False
+
+        if incident.ambulance_id is None:
+            return False
+
+        ambulance = (
+            self.state.ambulances.get(
+                incident.ambulance_id
+            )
+        )
+
+        if ambulance is None:
+            return False
+
+        if ambulance.status != "EN_ROUTE":
+            return False
+
+        current_hospital_id = str(
+            incident.hospital_id
+        )
+
+        result = check_live_redirection(
+            self.state,
+            incident.incident_id,
+        )
+
+        if not isinstance(result, dict):
+            return False
+
+        if not result.get(
+            "redirect",
+            False,
+        ):
+            return False
+
+        alternative = result.get(
+            "alternative_hospital"
+        )
+
+        if not isinstance(
+            alternative,
+            dict,
+        ):
+            return False
+
+        # ------------------------------------------------------
+        # Accept both key styles.
+        # ------------------------------------------------------
+
+        new_hospital_id = (
+            alternative.get(
+                "Hospital_ID"
+            )
+        )
+
+        if new_hospital_id is None:
+
+            new_hospital_id = (
+                alternative.get(
+                    "hospital_id"
+                )
+            )
+
+        if new_hospital_id is None:
+            return False
+
+        new_hospital_id = str(
+            new_hospital_id
+        )
+
+        if (
+            new_hospital_id
+            == current_hospital_id
+        ):
+            return False
+
+        history = (
+            self.redirect_history.setdefault(
+                incident.incident_id,
+                set(),
+            )
+        )
+
+        if new_hospital_id in history:
+            return False
+
+        new_hospital = (
+            self.state.hospitals.get(
+                new_hospital_id
+            )
+        )
+
+        if new_hospital is None:
+            return False
+
+        # ------------------------------------------------------
+        # Current remaining ETA.
+        # ------------------------------------------------------
+
+        eta_before = (
+            ambulance.eta_minutes
+        )
+
+        # ------------------------------------------------------
+        # Calculate ETA from CURRENT ambulance position.
+        # ------------------------------------------------------
+
+        eta_after = (
+            self.calculate_hospital_eta(
+                ambulance,
+                new_hospital,
+            )
+        )
+
+        if eta_after is None:
+
+            # We can redirect because the hospital failed,
+            # but we must not invent an ETA improvement.
+            eta_after = eta_before
+
+        # ------------------------------------------------------
+        # Record old destination.
+        # ------------------------------------------------------
+
+        history.add(
+            current_hospital_id
+        )
+
+        # ------------------------------------------------------
+        # Apply redirection.
+        # ------------------------------------------------------
+
+        incident.hospital_id = (
+            new_hospital_id
+        )
+
+        incident.status = "REDIRECTED"
+
+        ambulance.hospital_id = (
+            new_hospital_id
+        )
+
+        if eta_after is not None:
+
+            ambulance.eta_minutes = (
+                float(eta_after)
+            )
+
+        # ------------------------------------------------------
+        # Reason.
+        # ------------------------------------------------------
+
+        reason = str(
+            result.get(
+                "reason",
+                "Current hospital is no longer suitable.",
+            )
+        ).rstrip(".")
+
+        # ------------------------------------------------------
+        # Log decision.
+        # ------------------------------------------------------
+
+        self.logger.log_redirection(
+            incident_id=incident.incident_id,
+
+            current_time=self.state.current_time,
+
+            reason=reason,
+
+            original_hospital=(
+                current_hospital_id
+            ),
+
+            new_hospital=(
+                new_hospital_id
+            ),
+
             eta_before=eta_before,
 
             eta_after=eta_after,
 
-            severity=(
-                incident.severity
-            ),
+            severity=incident.severity,
 
-            ambulance_id=(
-                incident.ambulance_id
-            ),
+            ambulance_id=ambulance.ambulance_id,
         )
-
-        # ------------------------------------------------------
-        # EVENT
-        # ------------------------------------------------------
 
         if (
             eta_before is not None
             and eta_after is not None
         ):
 
-            saved = (
-                eta_before - eta_after
+            eta_change = (
+                float(eta_before)
+                - float(eta_after)
             )
 
-            self.state.add_event(
-                f"Incident "
-                f"{incident.incident_id} "
-                f"redirected from "
-                f"{old_hospital_id} to "
-                f"{new_hospital_id}. "
-                f"ETA "
-                f"{eta_before:.1f} -> "
-                f"{eta_after:.1f} min "
-                f"({saved:.1f} min saved)."
-            )
+            if eta_change > 0:
+
+                eta_message = (
+                    f" ETA improved from "
+                    f"{eta_before:.1f} to "
+                    f"{eta_after:.1f} min."
+                )
+
+            elif eta_change < 0:
+
+                eta_message = (
+                    f" ETA changed from "
+                    f"{eta_before:.1f} to "
+                    f"{eta_after:.1f} min."
+                )
+
+            else:
+
+                eta_message = (
+                    f" ETA remains "
+                    f"{eta_after:.1f} min."
+                )
 
         else:
 
-            self.state.add_event(
-                f"Incident "
-                f"{incident.incident_id} "
-                f"redirected from "
-                f"{old_hospital_id} to "
-                f"{new_hospital_id}."
-            )
+            eta_message = ""
+
+        self.state.add_event(
+            f"Incident "
+            f"{incident.incident_id} "
+            f"redirected from "
+            f"{current_hospital_id} to "
+            f"{new_hospital_id}. "
+            f"Reason: {reason}."
+            f"{eta_message}"
+        )
 
         return True
 
     # ==========================================================
-    # REDIRECTION CHECK
+    # REDIRECTION PIPELINE
     # ==========================================================
 
     def check_redirections(self):
@@ -1074,53 +1261,51 @@ class Simulator:
             self.state.get_active_incidents()
         ):
 
-            if (
-                incident.hospital_id
-                is None
-            ):
+            if incident.hospital_id is None:
                 continue
 
-            if (
-                incident.ambulance_id
-                is None
-            ):
+            if incident.ambulance_id is None:
                 continue
 
-            trigger = None
+            ambulance = (
+                self.state.ambulances.get(
+                    incident.ambulance_id
+                )
+            )
 
-            if (
-                incident.incident_id
-                in self.eta_recheck_required
+            if ambulance is None:
+                continue
+
+            if ambulance.status != "EN_ROUTE":
+                continue
+
+            # --------------------------------------------------
+            # ETA deterioration gets priority.
+            # --------------------------------------------------
+
+            if self.should_recheck_eta(
+                incident
             ):
 
-                trigger = (
-                    "ETA_DETERIORATION"
+                redirected = (
+                    self.check_eta_redirection(
+                        incident
+                    )
                 )
 
-            decision = evaluate_redirection(
+                self.eta_recheck_required.discard(
+                    incident.incident_id
+                )
 
-                self.state,
+                if redirected:
+                    continue
 
-                incident.incident_id,
+            # --------------------------------------------------
+            # Hospital failure/capacity.
+            # --------------------------------------------------
 
-                trigger_reason=trigger,
-            )
-
-            # This incident has now been
-            # evaluated for this event.
-            self.eta_recheck_required.discard(
-                incident.incident_id
-            )
-
-            if not decision.get(
-                "redirect",
-                False,
-            ):
-                continue
-
-            self.apply_redirection(
-                incident,
-                decision,
+            self.check_hospital_redirection(
+                incident
             )
 
     # ==========================================================
@@ -1131,6 +1316,28 @@ class Simulator:
 
         return self.events.process(
             self.state.current_time
+        )
+
+    # ==========================================================
+    # OUTPUT
+    # ==========================================================
+
+    def get_snapshot(self):
+
+        return self.output.snapshot(
+            self.state
+        )
+
+    def get_dashboard_snapshot(self):
+
+        return self.output.dashboard_snapshot(
+            self.state
+        )
+
+    def get_json(self):
+
+        return self.output.to_json(
+            self.state
         )
 
     # ==========================================================
@@ -1150,6 +1357,10 @@ class Simulator:
             f"TIME: "
             f"{self.state.current_time} min"
         )
+
+        # ------------------------------------------------------
+        # ACTIVE INCIDENTS
+        # ------------------------------------------------------
 
         print()
         print("ACTIVE INCIDENTS")
@@ -1177,6 +1388,10 @@ class Simulator:
                 f"{incident.hospital_id or '-'}"
             )
 
+        # ------------------------------------------------------
+        # FLEET
+        # ------------------------------------------------------
+
         print()
         print("FLEET")
         print("-" * 70)
@@ -1187,13 +1402,12 @@ class Simulator:
             self.state.ambulances.values()
         ):
 
-            counts[
+            status = str(
                 ambulance.status
-            ] = (
-                counts.get(
-                    ambulance.status,
-                    0,
-                ) + 1
+            ).upper()
+
+            counts[status] = (
+                counts.get(status, 0) + 1
             )
 
         print(
@@ -1207,19 +1421,23 @@ class Simulator:
         )
 
         print(
-            f"Busy:            "
+            f"Busy:             "
             f"{counts.get('BUSY', 0)}"
         )
 
         print(
-            f"Maintenance:     "
+            f"Maintenance:      "
             f"{counts.get('MAINTENANCE', 0)}"
         )
 
         print(
-            f"Arrived:         "
+            f"Arrived:          "
             f"{counts.get('ARRIVED', 0)}"
         )
+
+        # ------------------------------------------------------
+        # CURRENT INCIDENTS
+        # ------------------------------------------------------
 
         print()
         print("CURRENT INCIDENTS")
@@ -1261,13 +1479,15 @@ class Simulator:
                 f"{incident.hospital_id or '-'}"
             )
 
+        # ------------------------------------------------------
+        # EVENTS
+        # ------------------------------------------------------
+
         print()
         print("LATEST EVENTS")
         print("-" * 70)
 
-        for event in (
-            self.state.events[-8:]
-        ):
+        for event in self.state.events[-8:]:
 
             print(
                 f"[{event['time']:>3} min] "
@@ -1292,6 +1512,10 @@ class Simulator:
         )
         print("=" * 70)
 
+        # ------------------------------------------------------
+        # Initial dispatch
+        # ------------------------------------------------------
+
         for incident_id in incident_ids:
 
             try:
@@ -1304,14 +1528,25 @@ class Simulator:
 
                 self.state.add_event(
                     f"Failed to dispatch "
-                    f"incident "
-                    f"{incident_id}: "
+                    f"incident {incident_id}: "
                     f"{error}"
                 )
 
+        # ------------------------------------------------------
+        # Schedule events
+        # ------------------------------------------------------
+
         self.schedule_default_events()
 
+        # ------------------------------------------------------
+        # Initial dashboard
+        # ------------------------------------------------------
+
         self.print_dashboard()
+
+        # ------------------------------------------------------
+        # Simulation
+        # ------------------------------------------------------
 
         for _ in range(
             duration
@@ -1321,27 +1556,25 @@ class Simulator:
                 1
             )
 
-            # Events modify the world first.
             self.process_events()
 
-            # Then the dispatch system
-            # reacts to the new world state.
             self.check_redirections()
 
             if (
-                self.state.current_time
-                % 5
-                == 0
+                self.state.current_time % 5 == 0
                 or
-                self.state.current_time
-                == duration
+                self.state.current_time == duration
             ):
 
                 self.print_dashboard()
 
-        print()
+        # ------------------------------------------------------
+        # Decision summary
+        # ------------------------------------------------------
 
-        self.decision_logger.print_summary()
+        self.logger.print_summary()
+
+        return self.get_snapshot()
 
 
 # ==============================================================

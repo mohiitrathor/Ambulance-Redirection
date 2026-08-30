@@ -1,10 +1,11 @@
 from dataclasses import dataclass, asdict
 from typing import Optional
+from pathlib import Path
 import json
 
 
 # ==============================================================
-# DECISION
+# DECISION RECORD
 # ==============================================================
 
 @dataclass
@@ -30,7 +31,7 @@ class RedirectionDecision:
 
 
 # ==============================================================
-# LOGGER
+# DECISION LOGGER
 # ==============================================================
 
 class DecisionLogger:
@@ -40,7 +41,7 @@ class DecisionLogger:
         self.decisions = []
 
     # ----------------------------------------------------------
-    # LOG
+    # GENERIC LOG
     # ----------------------------------------------------------
 
     def log(
@@ -65,14 +66,22 @@ class DecisionLogger:
             and eta_after is not None
         ):
 
+            eta_before = float(
+                eta_before
+            )
+
+            eta_after = float(
+                eta_after
+            )
+
             eta_saved = (
-                float(eta_before)
-                - float(eta_after)
+                eta_before
+                - eta_after
             )
 
             improvement_percent = (
                 eta_saved
-                / max(float(eta_before), 1)
+                / max(eta_before, 1.0)
             ) * 100
 
         record = RedirectionDecision(
@@ -95,15 +104,13 @@ class DecisionLogger:
 
             original_hospital=(
                 str(original_hospital)
-                if original_hospital
-                is not None
+                if original_hospital is not None
                 else None
             ),
 
             new_hospital=(
                 str(new_hospital)
-                if new_hospital
-                is not None
+                if new_hospital is not None
                 else None
             ),
 
@@ -112,8 +119,7 @@ class DecisionLogger:
                     float(eta_before),
                     2,
                 )
-                if eta_before
-                is not None
+                if eta_before is not None
                 else None
             ),
 
@@ -122,8 +128,7 @@ class DecisionLogger:
                     float(eta_after),
                     2,
                 )
-                if eta_after
-                is not None
+                if eta_after is not None
                 else None
             ),
 
@@ -138,18 +143,24 @@ class DecisionLogger:
 
             eta_improvement_percent=(
                 round(
-                    float(
-                        improvement_percent
-                    ),
+                    float(improvement_percent),
                     2,
                 )
-                if improvement_percent
-                is not None
+                if improvement_percent is not None
                 else None
             ),
 
-            severity=severity,
-            ambulance_id=ambulance_id,
+            severity=(
+                str(severity)
+                if severity is not None
+                else None
+            ),
+
+            ambulance_id=(
+                str(ambulance_id)
+                if ambulance_id is not None
+                else None
+            ),
         )
 
         self.decisions.append(
@@ -159,7 +170,7 @@ class DecisionLogger:
         return record
 
     # ----------------------------------------------------------
-    # REDIRECT
+    # REDIRECTION
     # ----------------------------------------------------------
 
     def log_redirection(
@@ -176,17 +187,33 @@ class DecisionLogger:
     ):
 
         return self.log(
+
             incident_id=incident_id,
+
             current_time=current_time,
+
             decision="REDIRECTED",
+
             reason=reason,
+
             original_hospital=(
                 original_hospital
             ),
-            new_hospital=new_hospital,
-            eta_before=eta_before,
-            eta_after=eta_after,
+
+            new_hospital=(
+                new_hospital
+            ),
+
+            eta_before=(
+                eta_before
+            ),
+
+            eta_after=(
+                eta_after
+            ),
+
             severity=severity,
+
             ambulance_id=ambulance_id,
         )
 
@@ -206,20 +233,32 @@ class DecisionLogger:
     ):
 
         return self.log(
+
             incident_id=incident_id,
+
             current_time=current_time,
+
             decision="NO_REDIRECTION",
+
             reason=reason,
-            original_hospital=hospital_id,
+
+            original_hospital=(
+                hospital_id
+            ),
+
             new_hospital=None,
+
             eta_before=eta,
+
             eta_after=None,
+
             severity=severity,
+
             ambulance_id=ambulance_id,
         )
 
     # ----------------------------------------------------------
-    # GETTERS
+    # GET ALL DECISIONS
     # ----------------------------------------------------------
 
     def get_decisions(self):
@@ -228,20 +267,28 @@ class DecisionLogger:
             self.decisions
         )
 
+    # ----------------------------------------------------------
+    # INCIDENT HISTORY
+    # ----------------------------------------------------------
+
     def get_incident_history(
         self,
         incident_id,
     ):
 
+        incident_id = int(
+            incident_id
+        )
+
         return [
             decision
             for decision in self.decisions
             if decision.incident_id
-            == int(incident_id)
+            == incident_id
         ]
 
     # ----------------------------------------------------------
-    # METRICS
+    # REDIRECTION COUNT
     # ----------------------------------------------------------
 
     def total_redirections(self):
@@ -253,15 +300,23 @@ class DecisionLogger:
             in self.decisions
         )
 
+    # ----------------------------------------------------------
+    # TOTAL ETA SAVED
+    # ----------------------------------------------------------
+
     def total_eta_saved(self):
 
         values = [
+
             decision.eta_saved
+
             for decision
             in self.decisions
+
             if (
                 decision.decision
                 == "REDIRECTED"
+
                 and decision.eta_saved
                 is not None
             )
@@ -272,15 +327,23 @@ class DecisionLogger:
             2,
         )
 
+    # ----------------------------------------------------------
+    # AVERAGE ETA SAVED
+    # ----------------------------------------------------------
+
     def average_eta_saved(self):
 
         values = [
+
             decision.eta_saved
+
             for decision
             in self.decisions
+
             if (
                 decision.decision
                 == "REDIRECTED"
+
                 and decision.eta_saved
                 is not None
             )
@@ -296,7 +359,24 @@ class DecisionLogger:
         )
 
     # ----------------------------------------------------------
-    # JSON
+    # REDIRECTION RATE
+    # ----------------------------------------------------------
+
+    def redirection_rate(self):
+
+        if not self.decisions:
+            return 0.0
+
+        return round(
+            (
+                self.total_redirections()
+                / len(self.decisions)
+            ) * 100,
+            2,
+        )
+
+    # ----------------------------------------------------------
+    # EXPORT JSON
     # ----------------------------------------------------------
 
     def export_json(
@@ -304,8 +384,19 @@ class DecisionLogger:
         filepath,
     ):
 
+        filepath = Path(
+            filepath
+        )
+
+        filepath.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
         data = [
+
             asdict(decision)
+
             for decision
             in self.decisions
         ]
@@ -321,6 +412,16 @@ class DecisionLogger:
                 file,
                 indent=4,
             )
+
+        return filepath
+
+    # ----------------------------------------------------------
+    # CLEAR
+    # ----------------------------------------------------------
+
+    def clear(self):
+
+        self.decisions.clear()
 
     # ----------------------------------------------------------
     # SUMMARY
@@ -346,6 +447,11 @@ class DecisionLogger:
         )
 
         print(
+            f"Redirection rate:   "
+            f"{self.redirection_rate():.1f}%"
+        )
+
+        print(
             f"Total ETA saved:    "
             f"{self.total_eta_saved():.1f} min"
         )
@@ -356,6 +462,12 @@ class DecisionLogger:
         )
 
         print("-" * 70)
+
+        if not self.decisions:
+
+            print(
+                "No decisions recorded."
+            )
 
         for decision in self.decisions:
 
@@ -386,14 +498,30 @@ class DecisionLogger:
                     f"{decision.eta_after:.1f} min "
                     f"("
                     f"{decision.eta_saved:.1f}"
-                    f" min saved)"
+                    f" min saved, "
+                    f"{decision.eta_improvement_percent:.1f}%"
+                    f")"
+                )
+
+            if decision.severity:
+
+                print(
+                    f"  Severity: "
+                    f"{decision.severity}"
+                )
+
+            if decision.ambulance_id:
+
+                print(
+                    f"  Ambulance: "
+                    f"{decision.ambulance_id}"
                 )
 
         print("=" * 70)
 
 
 # ==============================================================
-# BASIC TEST
+# BASIC LOGGER TEST
 # ==============================================================
 
 if __name__ == "__main__":
@@ -401,30 +529,77 @@ if __name__ == "__main__":
     logger = DecisionLogger()
 
     logger.log_redirection(
+
         incident_id=1,
+
         current_time=5,
-        reason="Hospital became full.",
-        original_hospital="HOSP_182",
-        new_hospital="HOSP_099",
+
+        reason=(
+            "Hospital became full."
+        ),
+
+        original_hospital=(
+            "HOSP_182"
+        ),
+
+        new_hospital=(
+            "HOSP_099"
+        ),
+
         eta_before=29.5,
+
         eta_after=24.0,
+
         severity="Emergency",
+
         ambulance_id="AMB_0575",
     )
 
     logger.log_redirection(
+
         incident_id=2,
+
         current_time=10,
+
         reason=(
-            "ETA deterioration caused by "
-            "severe traffic."
+            "ETA deterioration caused "
+            "by severe traffic."
         ),
-        original_hospital="HOSP_279",
-        new_hospital="HOSP_031",
+
+        original_hospital=(
+            "HOSP_279"
+        ),
+
+        new_hospital=(
+            "HOSP_031"
+        ),
+
         eta_before=40.0,
+
         eta_after=27.0,
+
         severity="Critical",
+
         ambulance_id="AMB_0690",
+    )
+
+    logger.log_no_redirection(
+
+        incident_id=3,
+
+        current_time=12,
+
+        reason=(
+            "Current hospital remains suitable."
+        ),
+
+        hospital_id="HOSP_031",
+
+        eta=5.0,
+
+        severity="Moderate",
+
+        ambulance_id="AMB_0359",
     )
 
     logger.print_summary()
