@@ -23,11 +23,13 @@ async def lifespan(app: FastAPI):
     Startup: Initialize the Simulator singleton.
     This loads all CSVs and populates the world state.
 
-    Shutdown: No cleanup needed (no background threads).
+    Shutdown: Cleanly stop any running background real-time
+    simulation thread before process exit.
     """
 
     manager.initialize()
     yield
+    manager.stop_realtime()
 
 
 # ==============================================================
@@ -102,8 +104,8 @@ app.include_router(
     tags=["Health"],
     summary="Health check",
     description=(
-        "Returns server status and current "
-        "simulation time."
+        "Returns server status, current simulation time, "
+        "and real-time mode status."
     ),
 )
 def health():
@@ -111,4 +113,5 @@ def health():
     return {
         "status": "ok",
         "time": manager.simulator.state.current_time,
+        "realtime_running": manager.is_realtime_running,
     }
