@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -7,6 +8,7 @@ from redirection_engine import check_live_redirection
 from api.schemas.redirection import (
     RedirectionResult,
     DecisionRecord,
+    ManualRedirectionRequest,
 )
 
 
@@ -78,6 +80,60 @@ def check_redirection(incident_id: int):
             )
 
     return result
+
+
+# ==============================================================
+# POST /redirect/apply/{incident_id}
+# ==============================================================
+
+@router.post(
+    "/apply/{incident_id}",
+    response_model=DecisionRecord,
+    summary="Manually apply a hospital redirection",
+    description=(
+        "Manually redirect an en-route incident's ambulance to a new hospital. "
+        "Mutates live state, updates the vehicle destination, adjusts hospital loads, "
+        "and logs an [OPERATOR] tagged decision record."
+    ),
+)
+def apply_redirection(
+    incident_id: int,
+    request: Optional[ManualRedirectionRequest] = None,
+):
+    sim = manager.simulator
+    lock = manager.lock
+
+    target_hosp = request.target_hospital_id if request else None
+    reason = request.reason if request and request.reason else "Operator manual override"
+
+    with lock:
+        try:
+            decision = sim.apply_manual_redirection(
+                incident_id=incident_id,
+                target_hospital_id=target_hosp,
+                reason=reason,
+            )
+        except ValueError as error:
+            err_msg = str(error)
+            if "not found in state" in err_msg:
+                raise HTTPException(status_code=404, detail=err_msg)
+            elif (
+                "must be EN_ROUTE" in err_msg
+                or "already en route" in err_msg
+                or "has no assigned ambulance" in err_msg
+            ):
+                raise HTTPException(status_code=400, detail=err_msg)
+            elif "full" in err_msg or "no available" in err_msg or "identical" in err_msg:
+                raise HTTPException(status_code=409, detail=err_msg)
+            else:
+                raise HTTPException(status_code=400, detail=err_msg)
+        except Exception as error:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Manual redirection failed: {error}",
+            )
+
+        return DecisionRecord(**asdict(decision))
 
 
 # ==============================================================

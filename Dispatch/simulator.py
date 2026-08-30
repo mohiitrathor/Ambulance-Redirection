@@ -1566,6 +1566,120 @@ class Simulator:
         return True
 
     # ==========================================================
+    # MANUAL OPERATOR REDIRECTION
+    # ==========================================================
+
+    def apply_manual_redirection(
+        self,
+        incident_id,
+        target_hospital_id=None,
+        reason="Operator manual override",
+    ):
+        """
+        Manually redirect an en-route ambulance to a new hospital.
+
+        Validates that the incident exists and is currently EN_ROUTE.
+        If target_hospital_id is provided, validates that hospital exists and has capacity.
+        If target_hospital_id is omitted, automatically finds the best alternative using check_live_redirection.
+        Mutates incident, ambulance, and hospital loads, logs the decision tagged with [OPERATOR],
+        and emits a simulation event.
+        """
+        incident_id = int(incident_id)
+        incident = self.state.incidents.get(incident_id)
+        if incident is None:
+            raise ValueError(f"Incident {incident_id} not found in state.")
+
+        if not incident.ambulance_id:
+            raise ValueError(f"Incident {incident_id} has no assigned ambulance.")
+
+        ambulance = self.state.ambulances.get(str(incident.ambulance_id))
+        if ambulance is None:
+            raise ValueError(f"Ambulance {incident.ambulance_id} not found.")
+
+        if ambulance.status != "EN_ROUTE":
+            raise ValueError(
+                f"Cannot redirect incident {incident_id}: ambulance status is {ambulance.status} (must be EN_ROUTE)."
+            )
+
+        current_hospital_id = str(incident.hospital_id) if incident.hospital_id else None
+        current_hospital = self.state.hospitals.get(current_hospital_id) if current_hospital_id else None
+
+        # Determine target hospital
+        if target_hospital_id:
+            new_hospital_id = str(target_hospital_id)
+            new_hospital = self.state.hospitals.get(new_hospital_id)
+            if new_hospital is None:
+                raise ValueError(f"Target hospital {new_hospital_id} not found.")
+            if new_hospital.is_full or new_hospital.available_beds <= 0:
+                raise ValueError(f"Target hospital {new_hospital_id} is full or has no available beds.")
+            if incident.severity == "Critical" and new_hospital.available_icu <= 0:
+                raise ValueError(f"Target hospital {new_hospital_id} has no available ICU beds for Critical incident.")
+            if new_hospital_id == current_hospital_id:
+                raise ValueError(f"Ambulance is already en route to hospital {new_hospital_id}.")
+        else:
+            # Dynamic alternative selection via redirection engine
+            eval_result = check_live_redirection(self.state, incident_id)
+            alt = eval_result.get("alternative_hospital")
+            if not alt:
+                raise ValueError("No suitable alternative hospital available for redirection.")
+            new_hospital_id = str(alt.get("Hospital_ID") or alt.get("hospital_id"))
+            new_hospital = self.state.hospitals.get(new_hospital_id)
+            if new_hospital is None:
+                raise ValueError(f"Alternative hospital {new_hospital_id} not found in state.")
+            if new_hospital_id == current_hospital_id:
+                raise ValueError(f"Alternative hospital is identical to current destination ({new_hospital_id}).")
+
+        # Compute ETAs
+        eta_before = ambulance.eta_minutes
+        eta_after = self.calculate_hospital_eta(ambulance, new_hospital)
+        if eta_after is None:
+            eta_after = eta_before
+
+        eta_saved = round(float(eta_before) - float(eta_after), 2)
+
+        # Mutate Hospital Loads: decrement old hospital load, increment new hospital load
+        if current_hospital and current_hospital.current_load > 0:
+            current_hospital.current_load -= 1
+            if incident.severity == "Critical" and current_hospital.current_icu_load > 0:
+                current_hospital.current_icu_load -= 1
+
+        new_hospital.current_load += 1
+        if incident.severity == "Critical":
+            new_hospital.current_icu_load += 1
+
+        # Mutate Incident & Ambulance
+        history = self.redirect_history.setdefault(incident_id, set())
+        if current_hospital_id:
+            history.add(current_hospital_id)
+
+        incident.hospital_id = new_hospital_id
+        incident.status = "REDIRECTED"
+        ambulance.hospital_id = new_hospital_id
+        ambulance.eta_minutes = float(eta_after)
+
+        operator_reason = f"[OPERATOR] {reason}" if not str(reason).startswith("[OPERATOR]") else str(reason)
+
+        # Log Decision
+        decision_record = self.logger.log_redirection(
+            incident_id=incident_id,
+            current_time=self.state.current_time,
+            reason=operator_reason,
+            original_hospital=current_hospital_id,
+            new_hospital=new_hospital_id,
+            eta_before=eta_before,
+            eta_after=eta_after,
+            severity=incident.severity,
+            ambulance_id=ambulance.ambulance_id,
+        )
+
+        self.state.add_event(
+            f"Incident {incident_id} MANUALLY REDIRECTED: {current_hospital_id} -> {new_hospital_id} "
+            f"(ETA: {eta_before}m -> {eta_after}m, Saved: {eta_saved}m)."
+        )
+
+        return decision_record
+
+    # ==========================================================
     # REDIRECTION PIPELINE
     # ==========================================================
 

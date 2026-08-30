@@ -4,27 +4,15 @@
 
 import { store } from '../state.js';
 import * as api from '../api.js';
+import { openEventScheduleModal } from './event_modal.js';
 
 export function setupEvents() {
   const container = document.getElementById('event-feed-container');
   const btnSchedule = document.getElementById('btn-schedule-event');
 
   // --- Dynamic Event Injection ---
-  btnSchedule.addEventListener('click', async () => {
-    const hospId = prompt('Enter Hospital ID to mark FULL (e.g. HOSP_182):', 'HOSP_182');
-    if (!hospId) return;
-
-    const timeOffset = prompt('In how many simulation minutes should this trigger? (0 for immediately):', '1');
-    if (timeOffset === null) return;
-
-    const triggerTime = store.state.simTime + (parseInt(timeOffset, 10) || 0);
-
-    try {
-      await api.scheduleEvent(triggerTime, 'HOSPITAL_FULL', { hospital_id: hospId.trim() });
-      alert(`Scheduled HOSPITAL_FULL for ${hospId.trim()} at T+${triggerTime} min.`);
-    } catch (err) {
-      alert(`Failed to schedule event: ${err.message}`);
-    }
+  btnSchedule.addEventListener('click', () => {
+    openEventScheduleModal();
   });
 
   // --- Render Event Feed ---

@@ -75,6 +75,14 @@ export const simulationReset = () =>
 export const getDecisions = () => request('/redirect/decisions');
 export const getIncidentDecisions = (id) => request(`/redirect/decisions/${id}`);
 export const checkRedirection = (id) => request(`/redirect/check/${id}`, { method: 'POST' });
+export const applyRedirection = (id, targetHospitalId = null, reason = "Operator manual override") =>
+  request(`/redirect/apply/${id}`, {
+    method: 'POST',
+    body: JSON.stringify({
+      target_hospital_id: targetHospitalId,
+      reason: reason,
+    }),
+  });
 
 // --- Events ---
 export const getPendingEvents = () => request('/events/pending');

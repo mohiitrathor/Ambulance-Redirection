@@ -13,6 +13,7 @@ import { setupFleet } from './components/fleet.js';
 import { setupHospitals } from './components/hospitals.js';
 import { setupEvents } from './components/events.js';
 import { setupDecisions } from './components/decisions.js';
+import { setupDetailDrawer } from './components/detail_drawer.js';
 
 let pollCounter = 0;
 let isPolling = false;
@@ -30,6 +31,7 @@ async function bootstrap() {
   setupHospitals();
   setupEvents();
   setupDecisions();
+  setupDetailDrawer();
 
   // 3. Initial Lucide Icons Render
   if (window.lucide) {

@@ -4,6 +4,9 @@
  */
 
 import { store } from './state.js';
+import * as api from './api.js';
+import { openIncidentDetail } from './components/detail_drawer.js';
+import { showToast } from './components/toasts.js';
 
 class TacticalMap {
   constructor() {
@@ -81,7 +84,7 @@ class TacticalMap {
       const marker = L.marker([hosp.latitude, hosp.longitude], { icon });
 
       marker.bindPopup(`
-        <div style="font-family: var(--font-sans); min-width: 180px;">
+        <div style="font-family: var(--font-sans); min-width: 185px;">
           <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px; color: ${color};">
             ${hosp.hospital_id} (${hosp.hospital_type})
           </div>
@@ -91,9 +94,31 @@ class TacticalMap {
             <div style="margin-top: 4px; font-weight: 700; color: ${isSaturated ? '#ef4444' : '#10b981'};">
               ${isSaturated ? '⚠️ SATURATED (NO BEDS)' : '✓ CAPACITY AVAILABLE'}
             </div>
+            <div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid #334155;">
+              <button class="btn-saturate-hosp" data-hosp="${hosp.hospital_id}" style="background:#ef4444; color:#fff; border:none; border-radius:3px; padding:4px 8px; font-size:10px; font-weight:700; cursor:pointer; width:100%; font-family:var(--font-sans);">
+                ⚡ Simulate Saturation (Mark Full)
+              </button>
+            </div>
           </div>
         </div>
       `);
+
+      marker.on('popupopen', (e) => {
+        const popupNode = e.popup.getElement();
+        if (!popupNode) return;
+        const btn = popupNode.querySelector('.btn-saturate-hosp');
+        if (btn) {
+          btn.addEventListener('click', async () => {
+            try {
+              await api.scheduleEvent(store.state.simTime, 'HOSPITAL_FULL', { hospital_id: hosp.hospital_id });
+              showToast('Hospital Saturated', `Simulated 100% capacity for ${hosp.hospital_id}`, 'warning');
+              marker.closePopup();
+            } catch (err) {
+              showToast('Event Error', err.message, 'danger');
+            }
+          });
+        }
+      });
 
       this.hospitalMarkers.set(id, marker);
       this.hospitalsLayer.addLayer(marker);
@@ -162,6 +187,12 @@ class TacticalMap {
           className: 'amb-tooltip',
         });
 
+        ambMarker.on('click', () => {
+          store.selectIncident(incident.incident_id);
+          this.focusIncident(incident.incident_id);
+          openIncidentDetail(incident.incident_id);
+        });
+
         this.activeAmbulanceMarkers.set(ambulance.ambulance_id, ambMarker);
         this.enRouteAmbulancesLayer.addLayer(ambMarker);
 
@@ -178,6 +209,12 @@ class TacticalMap {
             opacity: 0.85,
           }
         );
+
+        routeLine.on('click', () => {
+          store.selectIncident(incident.incident_id);
+          this.focusIncident(incident.incident_id);
+          openIncidentDetail(incident.incident_id);
+        });
 
         this.routeLines.set(incident.incident_id, routeLine);
         this.routePolylinesLayer.addLayer(routeLine);

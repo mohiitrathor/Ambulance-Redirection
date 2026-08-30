@@ -5,6 +5,8 @@
 
 import { store } from '../state.js';
 import * as api from '../api.js';
+import { showToast } from './toasts.js';
+import { confirmModal } from './confirmation_modal.js';
 
 export function setupControls() {
   const btnPlay = document.getElementById('btn-play');
@@ -25,8 +27,9 @@ export function setupControls() {
       await api.startRealtime(speed, 1);
       const status = await api.getRealtimeStatus();
       store.updateRealtimeStatus(status);
+      showToast('Simulation Started', `Running at 1 tick per ${speed}s (1 min/tick)`, 'success', 3000);
     } catch (err) {
-      alert(`Failed to start simulation: ${err.message}`);
+      showToast('Simulation Error', err.message, 'danger');
     } finally {
       btnPlay.disabled = false;
     }
@@ -38,8 +41,9 @@ export function setupControls() {
       await api.stopRealtime();
       const status = await api.getRealtimeStatus();
       store.updateRealtimeStatus(status);
+      showToast('Simulation Paused', `Clock halted at T+${store.state.simTime}m`, 'info', 3000);
     } catch (err) {
-      alert(`Failed to stop simulation: ${err.message}`);
+      showToast('Pause Error', err.message, 'danger');
     } finally {
       btnPause.disabled = false;
     }
@@ -51,14 +55,22 @@ export function setupControls() {
       const data = await api.simulationTick(1);
       store.updateFromDashboard(data);
     } catch (err) {
-      alert(`Failed to advance simulation: ${err.message}`);
+      showToast('Step Error', err.message, 'danger');
     } finally {
       btnStep.disabled = false;
     }
   });
 
   btnReset.addEventListener('click', async () => {
-    if (!confirm('Are you sure you want to reset the simulation to time = 0?')) return;
+    const confirmed = await confirmModal({
+      title: 'Reset Simulation',
+      message: 'Are you sure you want to reset the simulation to time = 0? All active dispatches and telemetry will be cleared.',
+      confirmText: 'Reset Simulation',
+      cancelText: 'Cancel',
+      danger: true,
+    });
+    if (!confirmed) return;
+
     try {
       btnReset.disabled = true;
       await api.simulationReset();
@@ -68,8 +80,9 @@ export function setupControls() {
       store.updateFromDashboard(dash);
       const decisions = await api.getDecisions();
       store.setDecisions(decisions);
+      showToast('Simulation Reset', 'System state reset to T=0 min.', 'info', 3000);
     } catch (err) {
-      alert(`Failed to reset simulation: ${err.message}`);
+      showToast('Reset Error', err.message, 'danger');
     } finally {
       btnReset.disabled = false;
     }

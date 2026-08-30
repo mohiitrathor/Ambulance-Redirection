@@ -1,5 +1,30 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
+
+
+# ==============================================================
+# MANUAL REDIRECTION REQUEST
+# ==============================================================
+
+class ManualRedirectionRequest(BaseModel):
+    """
+    Operator manual redirection request.
+    If target_hospital_id is omitted, the engine will dynamically
+    evaluate and assign the best available alternative hospital.
+    """
+
+    target_hospital_id: Optional[str] = Field(
+        None,
+        description=(
+            "Optional target hospital ID to redirect to. "
+            "If omitted, engine selects best alternative."
+        ),
+    )
+    reason: Optional[str] = Field(
+        "Operator manual override",
+        max_length=200,
+        description="Operator justification for manual redirection.",
+    )
 
 
 # ==============================================================

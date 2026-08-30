@@ -79,7 +79,12 @@
             <i data-lucide="alert-triangle"></i>
             <span>Emergency Incident Triage</span>
           </div>
-          <span id="active-incident-count" class="ticker-label">0 Active</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button type="button" id="btn-open-intake" class="btn-action-primary" title="Triage New Live Emergency Call">
+              <i data-lucide="phone-call" style="width: 13px; height: 13px;"></i> + Live Call
+            </button>
+            <span id="active-incident-count" class="ticker-label">0 Active</span>
+          </div>
         </div>
 
         <div class="panel-body">
@@ -224,6 +229,12 @@
     </footer>
 
   </div>
+
+  <!-- Toast Notification Stream -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Slide-Out Incident Detail Drawer -->
+  <aside id="drawer-incident-detail" class="tactical-drawer"></aside>
 
   <!-- Main ES Module Bootstrap -->
   <script type="module" src="js/app.js"></script>

@@ -5,12 +5,23 @@
 import { store } from '../state.js';
 import * as api from '../api.js';
 import { tacticalMap } from '../map.js';
+import { showToast } from './toasts.js';
+import { openEmergencyIntakeModal } from './intake_modal.js';
+import { openIncidentDetail } from './detail_drawer.js';
 
 export function setupIncidents() {
   const form = document.getElementById('form-quick-dispatch');
   const inputId = document.getElementById('input-incident-id');
   const container = document.getElementById('incidents-container');
   const countBadge = document.getElementById('active-incident-count');
+  const btnOpenIntake = document.getElementById('btn-open-intake');
+
+  // --- Live Emergency Call Intake Button ---
+  if (btnOpenIntake) {
+    btnOpenIntake.addEventListener('click', () => {
+      openEmergencyIntakeModal();
+    });
+  }
 
   // --- Quick Dispatch Form Submit ---
   form.addEventListener('submit', async (e) => {
@@ -31,8 +42,19 @@ export function setupIncidents() {
         const ambulances = await api.getAmbulances();
         store.setAmbulances(ambulances);
       }
+
+      showToast(
+        'Incident Dispatched',
+        `Incident #${result.incident_id}: ${result.ambulance ? result.ambulance.ambulance_id : 'Awaiting unit'} -> ${result.hospital ? result.hospital.hospital_id : 'Unassigned'}`,
+        'success'
+      );
+
+      // Open detail drawer and focus map
+      store.selectIncident(result.incident_id);
+      tacticalMap.focusIncident(result.incident_id);
+      openIncidentDetail(result.incident_id);
     } catch (err) {
-      alert(`Dispatch Error: ${err.message}`);
+      showToast('Dispatch Error', err.message, 'danger');
     }
   });
 
@@ -82,12 +104,13 @@ export function setupIncidents() {
       `;
     }).join('');
 
-    // Attach click listeners to cards to focus on map
+    // Attach click listeners to cards to focus on map & open detail drawer
     container.querySelectorAll('.incident-card').forEach(card => {
       card.addEventListener('click', () => {
         const id = parseInt(card.getAttribute('data-id'), 10);
         store.selectIncident(id);
         tacticalMap.focusIncident(id);
+        openIncidentDetail(id);
       });
     });
 
