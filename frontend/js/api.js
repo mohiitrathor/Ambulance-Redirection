@@ -95,3 +95,15 @@ export const scheduleEvent = (time, eventType, data = {}) =>
       data: data,
     }),
   });
+
+// --- Historical Analytics ---
+export const getRuns = () => request('/analytics/runs');
+export const getAnalyticsSummary = (runId = null) =>
+  request(runId !== null ? `/analytics/summary?run_id=${runId}` : '/analytics/summary');
+export const getHistoricalIncidents = (runId = null, limit = 50, offset = 0) =>
+  request(runId !== null ? `/analytics/incidents?run_id=${runId}&limit=${limit}&offset=${offset}` : `/analytics/incidents?limit=${limit}&offset=${offset}`);
+export const getHistoricalDecisions = (runId = null) =>
+  request(runId !== null ? `/analytics/decisions?run_id=${runId}` : '/analytics/decisions');
+export const getHistoricalEvents = (runId = null, limit = 100) =>
+  request(runId !== null ? `/analytics/events?run_id=${runId}&limit=${limit}` : `/analytics/events?limit=${limit}`);
+

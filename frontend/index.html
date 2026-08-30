@@ -29,6 +29,16 @@
         <div class="brand-sub">Emergency Dispatch Command Center</div>
       </div>
 
+      <!-- Navigation Tabs -->
+      <div class="header-nav-tabs">
+        <button id="nav-btn-tactical" class="nav-tab-btn active">
+          <i data-lucide="crosshair"></i> Tactical Operations
+        </button>
+        <button id="nav-btn-analytics" class="nav-tab-btn">
+          <i data-lucide="bar-chart-2"></i> Historical Analytics
+        </button>
+      </div>
+
       <!-- Telemetry Ticker -->
       <div class="telemetry-ticker">
         <div class="ticker-item">
@@ -175,6 +185,104 @@
         </div>
       </section>
 
+    </main>
+
+    <!-- ==============================================================
+         HISTORICAL ANALYTICS WORKSPACE
+         ============================================================== -->
+    <main id="analytics-workspace" class="analytics-workspace" style="display: none;">
+      <!-- Run Selection & Control Bar -->
+      <div class="analytics-control-bar">
+        <div class="analytics-title-group">
+          <i data-lucide="database"></i>
+          <span>Historical Analytics & Telemetry Archive</span>
+        </div>
+        <div class="analytics-run-picker">
+          <label for="select-analytics-run">Simulation Session:</label>
+          <select id="select-analytics-run" class="analytics-select"></select>
+          <button id="btn-refresh-analytics" class="btn-tactical btn-small" title="Refresh Analytics Data">
+            <i data-lucide="rotate-cw"></i> Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI Scorecards Grid -->
+      <div class="analytics-kpi-grid">
+        <div class="kpi-card">
+          <span class="kpi-label">Total Dispatched</span>
+          <span id="kpi-total-dispatches" class="kpi-val text-cyan">0</span>
+          <div id="kpi-priority-bar" class="priority-ratio-bar" title="Priority Breakdown"></div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Mean Initial ETA</span>
+          <span id="kpi-avg-eta" class="kpi-val">0.0m</span>
+          <span class="kpi-sub">Dispatch to Hospital</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Redirection Rate</span>
+          <span id="kpi-redir-rate" class="kpi-val text-warning">0.0%</span>
+          <span class="kpi-sub">Dynamic Diverts</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Total ETA Saved</span>
+          <span id="kpi-eta-saved" class="kpi-val text-success">0.0m</span>
+          <span class="kpi-sub">Via Optimization</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Mean ML Confidence</span>
+          <span id="kpi-ml-confidence" class="kpi-val">0.0%</span>
+          <span class="kpi-sub">Severity Model</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Saturation Alerts</span>
+          <span id="kpi-saturation-events" class="kpi-val text-danger">0</span>
+          <span class="kpi-sub">Hospital Full Events</span>
+        </div>
+      </div>
+
+      <!-- Detailed 2-Column Analytics Content -->
+      <div class="analytics-content-grid">
+        <!-- Left: Redirection Intelligence & Decision Audit -->
+        <section class="tactical-panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <i data-lucide="git-merge"></i>
+              <span>Redirection Intelligence Breakdown</span>
+            </div>
+          </div>
+          <div id="analytics-redir-stats" class="analytics-stat-box"></div>
+          <div class="analytics-audit-title">Redirection Audit Feed:</div>
+          <div id="analytics-decisions-list" class="analytics-decisions-feed"></div>
+        </section>
+
+        <!-- Right: Incident Log Table -->
+        <section class="tactical-panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <i data-lucide="clipboard-list"></i>
+              <span>Incident Assignment & Outcome Log</span>
+            </div>
+          </div>
+          <div class="table-container" style="max-height: 480px; overflow-y: auto;">
+            <table class="tactical-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Triage</th>
+                  <th>Condition</th>
+                  <th>Ambulance</th>
+                  <th>Hospital</th>
+                  <th>ETA</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="analytics-incidents-tbody">
+                <tr><td colspan="7" class="empty-placeholder">Loading historical incident records...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
     </main>
 
     <!-- ==============================================================

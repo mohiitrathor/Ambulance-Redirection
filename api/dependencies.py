@@ -13,6 +13,7 @@ if str(DISPATCH_DIR) not in sys.path:
     sys.path.insert(0, str(DISPATCH_DIR))
 
 from simulator import Simulator
+from api.persistence.bridge import persistence_bridge
 
 
 # ==============================================================
@@ -29,6 +30,7 @@ class SimulatorManager:
          background real-time simulation ticks.
       3. Race-safe start, stop, and reset operations.
       4. Safe thread termination prior to state reconstruction.
+      5. Coordinated historical persistence run lifecycle.
     """
 
     def __init__(self):
@@ -36,6 +38,9 @@ class SimulatorManager:
         self._simulator: Simulator | None = None
         self._lock = threading.Lock()
         self._lifecycle_lock = threading.Lock()
+
+        # Historical persistence run ID
+        self._active_run_id: int | None = None
 
         # Real-time simulation state
         self._thread: threading.Thread | None = None
@@ -54,13 +59,28 @@ class SimulatorManager:
 
     def initialize(self):
         """
-        Create the Simulator instance.
+        Create the Simulator instance and initialize historical run tracking.
         Called once during FastAPI lifespan startup.
         """
 
         with self._lock:
             if self._simulator is None:
+                persistence_bridge.start()
+                run_id = persistence_bridge.create_run(notes="Initial simulation session")
+                self._active_run_id = run_id
                 self._simulator = Simulator()
+                self._simulator.persistence_bridge = persistence_bridge
+                self._simulator.run_id = run_id
+
+    # ----------------------------------------------------------
+    # ACTIVE RUN ID ACCESS
+    # ----------------------------------------------------------
+
+    @property
+    def active_run_id(self) -> int | None:
+
+        with self._lock:
+            return self._active_run_id
 
     # ----------------------------------------------------------
     # SIMULATOR ACCESS
@@ -289,14 +309,17 @@ class SimulatorManager:
 
     def reset(self):
         """
-        Tear down and recreate the Simulator with fresh state.
+        Tear down and recreate the Simulator with fresh state and fresh historical run.
 
         Guaranteed order:
           1. Stop background thread if active.
           2. Wait for background thread to terminate completely.
           3. Clear thread reference.
-          4. Acquire simulator lock and re-instantiate Simulator.
-          5. Leave in STOPPED state at time = 0.
+          4. Ensure persistence queue has processed all events belonging to old run.
+          5. Finalize the current run using its final simulation time and status.
+          6. Create fresh historical run session.
+          7. Acquire simulator lock and re-instantiate Simulator with new run_id.
+          8. Leave in STOPPED state at time = 0.
         """
 
         with self._lifecycle_lock:
@@ -308,12 +331,34 @@ class SimulatorManager:
                 self._thread = None
 
             self._status = "STOPPED"
+            ticks = self._ticks_processed
             self._ticks_processed = 0
             self._last_error = None
             self._started_at = None
 
+            # Get final simulation time and run ID from old simulation
             with self._lock:
+                current_time = self._simulator.state.current_time if self._simulator else 0
+                old_run_id = self._active_run_id
+
+            # Flush persistence queue to ensure all events from old run are written
+            persistence_bridge.flush(timeout=3.0)
+            if old_run_id is not None:
+                persistence_bridge.finalize_run(
+                    old_run_id,
+                    final_sim_time=current_time,
+                    total_ticks=ticks,
+                    status="COMPLETED",
+                )
+
+            # Create new historical run session in SQLite
+            new_run_id = persistence_bridge.create_run(notes="Reset simulation session")
+
+            with self._lock:
+                self._active_run_id = new_run_id
                 self._simulator = Simulator()
+                self._simulator.persistence_bridge = persistence_bridge
+                self._simulator.run_id = new_run_id
 
 
 # ==============================================================

@@ -114,11 +114,28 @@ class Simulator:
         self.eta_recheck_required = set()
 
         # ------------------------------------------------------
+        # HISTORICAL PERSISTENCE HOOKS (OPTIONAL)
+        # ------------------------------------------------------
+
+        self.persistence_bridge = None
+        self.run_id = None
+
+        # ------------------------------------------------------
         # INITIALIZE
         # ------------------------------------------------------
 
         self.load_state()
         self.register_event_handlers()
+
+    def _record_persistence(self, callback_name, *args, **kwargs):
+        """Invoke persistence hook safely if persistence_bridge is active."""
+        if getattr(self, "persistence_bridge", None) and getattr(self, "run_id", None):
+            fn = getattr(self.persistence_bridge, callback_name, None)
+            if callable(fn):
+                try:
+                    fn(self.run_id, *args, **kwargs)
+                except Exception:
+                    pass
 
     # ==========================================================
     # STATE LOADING
@@ -493,6 +510,28 @@ class Simulator:
             f"Incident {incident_id} dispatched."
         )
 
+        # Historical persistence hook
+        if ambulance_data and hospital_data:
+            self._record_persistence(
+                "record_dispatch",
+                incident_id=incident_id,
+                source="DATASET_REPLAY",
+                condition=incident.condition,
+                predicted_severity=incident.severity,
+                priority=incident.priority,
+                ml_confidence=result.get("patient", {}).get("confidence"),
+                patient_lat=float(row.get("Patient_Lat", row.get("Latitude", 26.9124))),
+                patient_lon=float(row.get("Patient_Lon", row.get("Longitude", 75.7873))),
+                dispatched_sim_time=self.state.current_time,
+                ambulance_id=str(ambulance_data["ambulance_id"]),
+                ambulance_type=str(ambulance_data.get("ambulance_type", "DEFAULT")),
+                hospital_id=str(hospital_data["hospital_id"]),
+                initial_eta_minutes=float(ambulance_data.get("eta_minutes", 0.0)),
+                route_distance_km=float(ambulance_data.get("route_distance_km")) if ambulance_data.get("route_distance_km") is not None else None,
+                traffic_level=str(ambulance_data.get("traffic_level", "NORMAL")),
+                road_condition=str(ambulance_data.get("road_condition", "GOOD")),
+            )
+
         return result
 
     # ==========================================================
@@ -716,6 +755,27 @@ class Simulator:
             f"{selected_amb.ambulance_id} -> {hospital_id}."
         )
 
+        # Historical persistence hook
+        self._record_persistence(
+            "record_dispatch",
+            incident_id=incident_id,
+            source="DYNAMIC_INTAKE",
+            condition=str(custom_data["Condition"]),
+            predicted_severity=predicted_severity,
+            priority=priority_number,
+            ml_confidence=confidence,
+            patient_lat=float(custom_data.get("patient_lat", 26.9124)),
+            patient_lon=float(custom_data.get("patient_lon", 75.7873)),
+            dispatched_sim_time=self.state.current_time,
+            ambulance_id=str(selected_amb.ambulance_id),
+            ambulance_type=str(selected_amb.ambulance_type),
+            hospital_id=hospital_id,
+            initial_eta_minutes=float(selected_eta),
+            route_distance_km=float(selected_distance),
+            traffic_level=getattr(selected_amb, "traffic_level", "NORMAL"),
+            road_condition=getattr(selected_amb, "road_condition", "GOOD"),
+        )
+
         return {
             "status": "DISPATCH_RECOMMENDED",
             "incident_id": incident_id,
@@ -773,6 +833,15 @@ class Simulator:
 
         self.state.add_event(
             f"Hospital {hospital_id} became full."
+        )
+
+        # Historical persistence hook
+        self._record_persistence(
+            "record_event",
+            event_type="HOSPITAL_FULL",
+            sim_time=self.state.current_time,
+            facility_or_unit_id=hospital_id,
+            message=f"Hospital {hospital_id} became full.",
         )
 
     # ==========================================================
@@ -1055,6 +1124,16 @@ class Simulator:
                     f"{ambulance.hospital_id}."
                 )
 
+                # Historical persistence hook
+                if ambulance.incident_id is not None:
+                    self._record_persistence(
+                        "record_arrival",
+                        incident_id=ambulance.incident_id,
+                        ambulance_id=ambulance.ambulance_id,
+                        hospital_id=ambulance.hospital_id,
+                        arrived_sim_time=self.state.current_time,
+                    )
+
                 continue
 
             if ambulance.incident_id is not None:
@@ -1317,6 +1396,23 @@ class Simulator:
             f"{best_eta:.1f} min."
         )
 
+        # Historical persistence hook
+        self._record_persistence(
+            "record_redirection",
+            incident_id=incident.incident_id,
+            ambulance_id=ambulance.ambulance_id,
+            decision_type="REDIRECTED",
+            trigger_type="AI_AUTONOMOUS",
+            original_hospital_id=old_hospital_id,
+            new_hospital_id=new_hospital_id,
+            eta_before=current_eta,
+            eta_after=best_eta,
+            eta_saved=round(improvement, 2),
+            eta_improvement_pct=round(improvement_percent, 2),
+            reason=f"ETA deterioration caused by {ambulance.traffic_level.lower()} traffic",
+            sim_time=self.state.current_time,
+        )
+
         return True
 
     # ==========================================================
@@ -1563,6 +1659,23 @@ class Simulator:
             f"{eta_message}"
         )
 
+        # Historical persistence hook
+        self._record_persistence(
+            "record_redirection",
+            incident_id=incident.incident_id,
+            ambulance_id=ambulance.ambulance_id,
+            decision_type="REDIRECTED",
+            trigger_type="AI_AUTONOMOUS",
+            original_hospital_id=current_hospital_id,
+            new_hospital_id=new_hospital_id,
+            eta_before=eta_before,
+            eta_after=eta_after,
+            eta_saved=round(float(eta_before) - float(eta_after), 2) if eta_before and eta_after else 0.0,
+            eta_improvement_pct=0.0,
+            reason=reason,
+            sim_time=self.state.current_time,
+        )
+
         return True
 
     # ==========================================================
@@ -1636,6 +1749,7 @@ class Simulator:
             eta_after = eta_before
 
         eta_saved = round(float(eta_before) - float(eta_after), 2)
+        eta_improvement_pct = round((eta_saved / float(eta_before) * 100.0), 2) if (eta_before and float(eta_before) > 0) else 0.0
 
         # Mutate Hospital Loads: decrement old hospital load, increment new hospital load
         if current_hospital and current_hospital.current_load > 0:
@@ -1675,6 +1789,23 @@ class Simulator:
         self.state.add_event(
             f"Incident {incident_id} MANUALLY REDIRECTED: {current_hospital_id} -> {new_hospital_id} "
             f"(ETA: {eta_before}m -> {eta_after}m, Saved: {eta_saved}m)."
+        )
+
+        # Historical persistence hook
+        self._record_persistence(
+            "record_redirection",
+            incident_id=incident_id,
+            ambulance_id=ambulance.ambulance_id,
+            decision_type="REDIRECTED",
+            trigger_type="OPERATOR_MANUAL",
+            original_hospital_id=current_hospital_id,
+            new_hospital_id=new_hospital_id,
+            eta_before=eta_before,
+            eta_after=eta_after,
+            eta_saved=eta_saved,
+            eta_improvement_pct=eta_improvement_pct,
+            reason=operator_reason,
+            sim_time=self.state.current_time,
         )
 
         return decision_record

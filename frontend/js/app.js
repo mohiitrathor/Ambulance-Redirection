@@ -14,6 +14,7 @@ import { setupHospitals } from './components/hospitals.js';
 import { setupEvents } from './components/events.js';
 import { setupDecisions } from './components/decisions.js';
 import { setupDetailDrawer } from './components/detail_drawer.js';
+import { setupAnalytics } from './components/analytics.js';
 
 let pollCounter = 0;
 let isPolling = false;
@@ -32,6 +33,7 @@ async function bootstrap() {
   setupEvents();
   setupDecisions();
   setupDetailDrawer();
+  setupAnalytics();
 
   // 3. Initial Lucide Icons Render
   if (window.lucide) {

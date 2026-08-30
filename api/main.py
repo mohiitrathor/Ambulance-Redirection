@@ -6,12 +6,14 @@ from fastapi.staticfiles import StaticFiles
 
 from api.config import FRONTEND_DIR
 from api.dependencies import manager
+from api.persistence.bridge import persistence_bridge
 from api.routers import (
     dispatch,
     state,
     events,
     redirection,
     simulation,
+    analytics,
 )
 
 
@@ -22,16 +24,29 @@ from api.routers import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Startup: Initialize the Simulator singleton.
+    Startup: Initialize the Simulator singleton and historical persistence run.
     This loads all CSVs and populates the world state.
 
     Shutdown: Cleanly stop any running background real-time
-    simulation thread before process exit.
+    simulation thread, finalize the active run session as TERMINATED,
+    and cleanly shut down the background persistence worker.
     """
 
     manager.initialize()
     yield
     manager.stop_realtime()
+    if manager.active_run_id is not None:
+        try:
+            with manager.lock:
+                final_time = manager.simulator.state.current_time if manager.simulator else 0
+            persistence_bridge.finalize_run(
+                manager.active_run_id,
+                final_sim_time=final_time,
+                status="TERMINATED",
+            )
+        except Exception:
+            pass
+    persistence_bridge.shutdown()
 
 
 # ==============================================================
@@ -94,6 +109,12 @@ app.include_router(
     simulation.router,
     prefix="/simulation",
     tags=["Simulation"],
+)
+
+app.include_router(
+    analytics.router,
+    prefix="/analytics",
+    tags=["Analytics"],
 )
 
 
