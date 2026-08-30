@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import threading
 import joblib
 import numpy as np
 import pandas as pd
@@ -46,38 +47,74 @@ AMBULANCE_CAPABILITY = {
 
 
 # ==============================================================
-# DATA LOADING
+# DATA LOADING & IN-MEMORY CACHE
 # ==============================================================
 
-def load_data():
+_DATA_CACHE = None
+_CACHE_LOCK = threading.Lock()
 
-    patients = pd.read_csv(
-        PATIENTS_PATH
-    )
 
-    ambulances = pd.read_csv(
-        AMBULANCES_PATH
-    )
+def load_data(
+    force_reload=False,
+):
+    """
+    Load datasets and the trained ML model.
 
-    scenarios = pd.read_csv(
-        SCENARIOS_PATH
-    )
+    Results are cached in memory on first load.
+    Subsequent calls return the cached in-memory resources
+    unless force_reload is True.
+    """
 
-    hospitals = pd.read_csv(
-        HOSPITALS_PATH
-    )
+    global _DATA_CACHE
 
-    model = joblib.load(
-        MODEL_PATH
-    )
+    if _DATA_CACHE is not None and not force_reload:
+        return _DATA_CACHE
 
-    return (
-        patients,
-        ambulances,
-        scenarios,
-        hospitals,
-        model,
-    )
+    with _CACHE_LOCK:
+
+        if _DATA_CACHE is not None and not force_reload:
+            return _DATA_CACHE
+
+        patients = pd.read_csv(
+            PATIENTS_PATH
+        )
+
+        ambulances = pd.read_csv(
+            AMBULANCES_PATH
+        )
+
+        scenarios = pd.read_csv(
+            SCENARIOS_PATH
+        )
+
+        hospitals = pd.read_csv(
+            HOSPITALS_PATH
+        )
+
+        model = joblib.load(
+            MODEL_PATH
+        )
+
+        _DATA_CACHE = (
+            patients,
+            ambulances,
+            scenarios,
+            hospitals,
+            model,
+        )
+
+        return _DATA_CACHE
+
+
+def clear_data_cache():
+    """
+    Clear the in-memory dataset and model cache.
+    """
+
+    global _DATA_CACHE
+
+    with _CACHE_LOCK:
+        _DATA_CACHE = None
 
 
 # ==============================================================

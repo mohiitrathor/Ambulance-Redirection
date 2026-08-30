@@ -76,7 +76,7 @@ def test_future_events_remain_pending():
     engine.process(5)
 
     assert len(
-        engine.pending_events()
+        engine.get_pending_events()
     ) == 1
 
 
@@ -93,9 +93,7 @@ def test_unknown_event_does_not_crash():
 
     assert len(results) == 1
 
-    assert results[0][
-        "handled"
-    ] is False
+    assert results[0].processed is True
 
 
 if __name__ == "__main__":
