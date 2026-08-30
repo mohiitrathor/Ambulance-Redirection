@@ -194,6 +194,7 @@ def select_ambulance(
     incident_id,
     ambulances,
     scenarios,
+    available_ambulance_ids=None,
 ):
     """
     Select the best available ambulance
@@ -252,6 +253,13 @@ def select_ambulance(
         .str.upper()
         == "AVAILABLE"
     ].copy()
+
+    if available_ambulance_ids is not None:
+        candidates = candidates[
+            candidates[
+                "Ambulance_ID"
+            ].isin(available_ambulance_ids)
+        ].copy()
 
     if candidates.empty:
 
@@ -413,6 +421,8 @@ def select_hospital(
     patient_lat,
     patient_lon,
     hospitals,
+    suitable_hospital_ids=None,
+    live_icu_hospital_ids=None,
 ):
     """
     Select the most suitable hospital.
@@ -512,6 +522,13 @@ def select_hospital(
         ] > 0
     ].copy()
 
+    if suitable_hospital_ids is not None:
+        candidates = candidates[
+            candidates[
+                "Hospital_ID"
+            ].isin(suitable_hospital_ids)
+        ].copy()
+
     # ----------------------------------------------------------
     # ICU REQUIREMENT
     # ----------------------------------------------------------
@@ -523,6 +540,13 @@ def select_hospital(
                 "Available_ICU"
             ] > 0
         ].copy()
+
+        if live_icu_hospital_ids is not None:
+            candidates = candidates[
+                candidates[
+                    "Hospital_ID"
+                ].isin(live_icu_hospital_ids)
+            ].copy()
 
     if candidates.empty:
 
@@ -564,6 +588,9 @@ def select_hospital(
 
 def dispatch_incident(
     incident_id,
+    available_ambulance_ids=None,
+    suitable_hospital_ids=None,
+    live_icu_hospital_ids=None,
 ):
     """
     Run the complete initial dispatch pipeline.
@@ -677,6 +704,7 @@ def dispatch_incident(
         incident_id,
         ambulances,
         scenarios,
+        available_ambulance_ids=available_ambulance_ids,
     )
 
     # ----------------------------------------------------------
@@ -755,6 +783,10 @@ def dispatch_incident(
         ),
 
         hospitals,
+
+        suitable_hospital_ids=suitable_hospital_ids,
+
+        live_icu_hospital_ids=live_icu_hospital_ids,
     )
 
     # ----------------------------------------------------------

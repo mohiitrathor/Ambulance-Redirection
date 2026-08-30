@@ -1,7 +1,32 @@
 from pathlib import Path
+from math import radians, sin, cos, atan2, sqrt
 import sys
 
 import pandas as pd
+
+
+def _distance_between(lat1, lon1, lat2, lon2):
+    r1 = radians(float(lat1))
+    o1 = radians(float(lon1))
+    r2 = radians(float(lat2))
+    o2 = radians(float(lon2))
+    dlat = r2 - r1
+    dlon = o2 - o1
+    a = sin(dlat / 2) ** 2 + cos(r1) * cos(r2) * sin(dlon / 2) ** 2
+    a = min(1.0, max(0.0, a))
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return round(6371.0 * c, 3)
+
+
+def _estimate_eta_to_patient(amb, distance_km):
+    speed = amb.get_speed_kmh() if hasattr(amb, "get_speed_kmh") else 50.0
+    if speed <= 0:
+        speed = 50.0
+    base_eta = (distance_km / speed) * 60.0
+    t_mult = amb.get_traffic_multiplier() if hasattr(amb, "get_traffic_multiplier") else 1.0
+    r_mult = amb.get_road_multiplier() if hasattr(amb, "get_road_multiplier") else 1.0
+    return round(max(0.1, base_eta * t_mult * r_mult), 2)
+
 
 
 # ==============================================================
@@ -21,7 +46,15 @@ if str(DISPATCH_DIR) not in sys.path:
 # DISPATCH MODULES
 # ==============================================================
 
-from dispatch_engine import dispatch_incident
+from dispatch_engine import (
+    dispatch_incident,
+    load_data,
+    predict_severity,
+    select_hospital,
+    required_ambulance_level,
+    SEVERITY_PRIORITY,
+    AMBULANCE_CAPABILITY,
+)
 from redirection_engine import check_live_redirection
 from events import EventEngine
 
@@ -263,8 +296,30 @@ class Simulator:
 
         row = rows.iloc[0]
 
+        # Derive live operational constraints from authoritative DispatchState
+        available_ambulance_ids = {
+            amb.ambulance_id
+            for amb in self.state.ambulances.values()
+            if amb.status == "AVAILABLE"
+        }
+
+        suitable_hospital_ids = {
+            hosp.hospital_id
+            for hosp in self.state.hospitals.values()
+            if not hosp.is_full and hosp.available_beds > 0
+        }
+
+        live_icu_hospital_ids = {
+            hosp.hospital_id
+            for hosp in self.state.hospitals.values()
+            if not hosp.is_full and hosp.available_icu > 0
+        }
+
         result = dispatch_incident(
-            incident_id
+            incident_id,
+            available_ambulance_ids=available_ambulance_ids,
+            suitable_hospital_ids=suitable_hospital_ids,
+            live_icu_hospital_ids=live_icu_hospital_ids,
         )
 
         patient_data = result.get(
@@ -417,6 +472,15 @@ class Simulator:
                     hospital_id
                 )
 
+            hosp = self.state.hospitals.get(
+                hospital_id
+            )
+
+            if hosp:
+                hosp.current_load += 1
+                if severity == "Critical":
+                    hosp.current_icu_load += 1
+
         # ------------------------------------------------------
         # Redirect history
         # ------------------------------------------------------
@@ -430,6 +494,256 @@ class Simulator:
         )
 
         return result
+
+    # ==========================================================
+    # CREATE CUSTOM INCIDENT (LIVE EMERGENCY CALL INTAKE)
+    # ==========================================================
+
+    def create_custom_incident(
+        self,
+        custom_data,
+    ):
+        """
+        Dispatch a new live emergency call dynamically.
+
+        Validates against the actual 24-feature ML model contract,
+        selects the best available ambulance and suitable hospital
+        from authoritative live state, and mutates DispatchState.
+        """
+        if not hasattr(self, "_next_custom_id"):
+            self._next_custom_id = 100001
+
+        incident_id = self._next_custom_id
+        self._next_custom_id += 1
+
+        feature_names = [
+            "Sex",
+            "Condition",
+            "Oxygen_Requirement",
+            "Consciousness",
+            "Injury_Type",
+            "Arrival_Mode",
+            "Age",
+            "Heart_Rate",
+            "SpO2",
+            "Systolic_BP",
+            "Diastolic_BP",
+            "Respiratory_Rate",
+            "Temperature",
+            "GCS",
+            "Pain_Score",
+            "Blood_Glucose",
+            "Respiratory_Distress",
+            "Chest_Pain",
+            "Bleeding",
+            "Seizure",
+            "Diabetes",
+            "Hypertension",
+            "Heart_Disease",
+            "Respiratory_Disease",
+        ]
+
+        model_input = pd.DataFrame(
+            [{col: custom_data[col] for col in feature_names}]
+        )
+
+        (
+            patients_df,
+            ambulances_df,
+            scenarios_df,
+            hospitals_df,
+            model,
+        ) = load_data()
+
+        (
+            predicted_severity,
+            confidence,
+            probabilities,
+        ) = predict_severity(
+            model,
+            model_input,
+        )
+
+        priority_number = SEVERITY_PRIORITY.get(
+            predicted_severity,
+            5,
+        )
+
+        patient_lat = float(custom_data["patient_lat"])
+        patient_lon = float(custom_data["patient_lon"])
+
+        # ------------------------------------------------------
+        # Select Ambulance from live available fleet
+        # ------------------------------------------------------
+        available_ambs = [
+            amb
+            for amb in self.state.ambulances.values()
+            if amb.status == "AVAILABLE"
+        ]
+
+        selected_amb = None
+        selected_eta = None
+        selected_distance = None
+        cap_match = False
+        fallback = False
+
+        if available_ambs:
+            required_level = required_ambulance_level(
+                predicted_severity
+            )
+
+            scored = []
+            for amb in available_ambs:
+                dist = _distance_between(
+                    amb.latitude,
+                    amb.longitude,
+                    patient_lat,
+                    patient_lon,
+                )
+                eta = _estimate_eta_to_patient(amb, dist)
+                cap_level = AMBULANCE_CAPABILITY.get(
+                    amb.ambulance_type,
+                    1,
+                )
+                matches = cap_level >= required_level
+                scored.append((not matches, eta, dist, amb, matches))
+
+            scored.sort(key=lambda x: (x[0], x[1]))
+            (not_match, selected_eta, selected_distance, selected_amb, cap_match) = scored[0]
+            fallback = not_match
+
+        if selected_amb is None:
+            return {
+                "status": "NO_AMBULANCE_AVAILABLE",
+                "incident_id": incident_id,
+                "predicted_severity": predicted_severity,
+                "confidence": confidence,
+                "patient": {
+                    "condition": str(custom_data["Condition"]),
+                    "predicted_severity": predicted_severity,
+                    "priority": f"P{priority_number}",
+                    "confidence": confidence,
+                },
+                "ambulance": None,
+                "hospital": None,
+            }
+
+        # ------------------------------------------------------
+        # Select Hospital from live state
+        # ------------------------------------------------------
+        suitable_hospital_ids = {
+            h.hospital_id
+            for h in self.state.hospitals.values()
+            if not h.is_full and h.available_beds > 0
+        }
+
+        live_icu_hospital_ids = {
+            h.hospital_id
+            for h in self.state.hospitals.values()
+            if not h.is_full and h.available_icu > 0
+        }
+
+        (
+            selected_hospital_row,
+            _,
+        ) = select_hospital(
+            predicted_severity,
+            str(custom_data["Condition"]),
+            patient_lat,
+            patient_lon,
+            hospitals_df,
+            suitable_hospital_ids=suitable_hospital_ids,
+            live_icu_hospital_ids=live_icu_hospital_ids,
+        )
+
+        if selected_hospital_row is None:
+            return {
+                "status": "NO_SUITABLE_HOSPITAL",
+                "incident_id": incident_id,
+                "patient": {
+                    "condition": str(custom_data["Condition"]),
+                    "predicted_severity": predicted_severity,
+                    "priority": f"P{priority_number}",
+                    "confidence": confidence,
+                },
+                "ambulance": {
+                    "ambulance_id": str(selected_amb.ambulance_id),
+                    "ambulance_type": str(selected_amb.ambulance_type),
+                    "eta_minutes": float(selected_eta),
+                    "distance_km": float(selected_distance),
+                    "traffic_level": str(selected_amb.traffic_level),
+                    "road_condition": str(selected_amb.road_condition),
+                    "capability_match": bool(cap_match),
+                    "fallback": bool(fallback),
+                },
+                "hospital": None,
+            }
+
+        hospital_id = str(selected_hospital_row["Hospital_ID"])
+
+        # ------------------------------------------------------
+        # Mutate Authoritative Live State
+        # ------------------------------------------------------
+        incident = IncidentState(
+            incident_id=incident_id,
+            condition=str(custom_data["Condition"]),
+            severity=predicted_severity,
+            priority=priority_number,
+            status="DISPATCHED",
+            ambulance_id=str(selected_amb.ambulance_id),
+            hospital_id=hospital_id,
+        )
+        self.state.add_incident(incident)
+
+        selected_amb.status = "EN_ROUTE"
+        selected_amb.incident_id = incident_id
+        selected_amb.hospital_id = hospital_id
+        selected_amb.base_eta_minutes = float(selected_eta)
+        selected_amb.eta_minutes = float(selected_eta)
+        selected_amb.route_distance_km = float(selected_distance)
+        self.last_known_eta[incident_id] = float(selected_eta)
+
+        hosp_state = self.state.hospitals.get(hospital_id)
+        if hosp_state:
+            hosp_state.current_load += 1
+            if predicted_severity == "Critical":
+                hosp_state.current_icu_load += 1
+
+        self.redirect_history[incident_id] = set()
+
+        self.state.add_event(
+            f"Live Incident {incident_id} ({predicted_severity}) dispatched: "
+            f"{selected_amb.ambulance_id} -> {hospital_id}."
+        )
+
+        return {
+            "status": "DISPATCH_RECOMMENDED",
+            "incident_id": incident_id,
+            "patient": {
+                "condition": str(custom_data["Condition"]),
+                "predicted_severity": predicted_severity,
+                "priority": f"P{priority_number}",
+                "confidence": confidence,
+            },
+            "ambulance": {
+                "ambulance_id": str(selected_amb.ambulance_id),
+                "ambulance_type": str(selected_amb.ambulance_type),
+                "eta_minutes": float(selected_eta),
+                "distance_km": float(selected_distance),
+                "traffic_level": str(selected_amb.traffic_level),
+                "road_condition": str(selected_amb.road_condition),
+                "capability_match": bool(cap_match),
+                "fallback": bool(fallback),
+            },
+            "hospital": {
+                "hospital_id": hospital_id,
+                "hospital_type": str(selected_hospital_row["Hospital_Type"]),
+                "distance_km": float(selected_hospital_row["Distance_KM"]),
+                "available_beds": int(hosp_state.available_beds if hosp_state else selected_hospital_row["Available_Beds"]),
+                "available_icu": int(hosp_state.available_icu if hosp_state else selected_hospital_row["Available_ICU"]),
+                "suitability": int(selected_hospital_row["Suitability"]),
+            },
+        }
 
     # ==========================================================
     # HOSPITAL FULL

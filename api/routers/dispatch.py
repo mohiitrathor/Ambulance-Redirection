@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from api.dependencies import manager
-from api.schemas.dispatch import DispatchResult
+from api.schemas.dispatch import DispatchResult, CustomIncidentRequest
 
 
 # ==============================================================
@@ -9,6 +9,44 @@ from api.schemas.dispatch import DispatchResult
 # ==============================================================
 
 router = APIRouter()
+
+
+# ==============================================================
+# POST /dispatch/live
+# ==============================================================
+
+@router.post(
+    "/live",
+    response_model=DispatchResult,
+    summary="Dispatch a live emergency call",
+    description=(
+        "Triage and dispatch a dynamic emergency call intake. "
+        "Validates against the full 24-feature ML contract, "
+        "selects available ambulance and suitable hospital using "
+        "live authoritative state, and mutates DispatchState."
+    ),
+)
+def dispatch_live_emergency(request: CustomIncidentRequest):
+
+    sim = manager.simulator
+    lock = manager.lock
+
+    with lock:
+
+        try:
+
+            result = sim.create_custom_incident(
+                request.model_dump()
+            )
+
+        except Exception as error:
+
+            raise HTTPException(
+                status_code=500,
+                detail=f"Live dispatch error: {error}",
+            )
+
+    return result
 
 
 # ==============================================================

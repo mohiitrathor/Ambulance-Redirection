@@ -44,6 +44,12 @@ export const getIncident = (id) => request(`/state/incidents/${id}`);
 export const dispatchIncident = (incidentId) => 
   request(`/dispatch/${incidentId}`, { method: 'POST' });
 
+export const dispatchLive = (customData) =>
+  request('/dispatch/live', {
+    method: 'POST',
+    body: JSON.stringify(customData),
+  });
+
 // --- Simulation Controls ---
 export const getRealtimeStatus = () => request('/simulation/realtime/status');
 
