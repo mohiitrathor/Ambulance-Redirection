@@ -5,9 +5,33 @@ import numpy as np
 import pandas as pd
 
 
+# ==============================================================
+# PATHS
+# ==============================================================
+
 ROOT = Path(__file__).resolve().parents[1]
 
 DATASET_DIR = ROOT / "Dataset"
+
+PATIENTS_PATH = (
+    DATASET_DIR
+    / "patient_incidents.csv"
+)
+
+AMBULANCES_PATH = (
+    DATASET_DIR
+    / "ambulances.csv"
+)
+
+SCENARIOS_PATH = (
+    DATASET_DIR
+    / "dispatch_scenarios.csv"
+)
+
+HOSPITALS_PATH = (
+    DATASET_DIR
+    / "hospitals.csv"
+)
 
 MODEL_PATH = (
     ROOT
@@ -16,11 +40,10 @@ MODEL_PATH = (
     / "logistic_regression_final.joblib"
 )
 
-PATIENTS_PATH = DATASET_DIR / "patient_incidents.csv"
-AMBULANCES_PATH = DATASET_DIR / "ambulances.csv"
-SCENARIOS_PATH = DATASET_DIR / "dispatch_scenarios.csv"
-HOSPITALS_PATH = DATASET_DIR / "hospitals.csv"
 
+# ==============================================================
+# CONSTANTS
+# ==============================================================
 
 SEVERITY_PRIORITY = {
     "Critical": 1,
@@ -30,7 +53,6 @@ SEVERITY_PRIORITY = {
     "Non-Urgent": 5,
 }
 
-
 AMBULANCE_CAPABILITY = {
     "Basic Life Support": 1,
     "Advanced Life Support": 2,
@@ -38,14 +60,31 @@ AMBULANCE_CAPABILITY = {
 }
 
 
+# ==============================================================
+# DATA
+# ==============================================================
+
 def load_data():
 
-    patients = pd.read_csv(PATIENTS_PATH)
-    ambulances = pd.read_csv(AMBULANCES_PATH)
-    scenarios = pd.read_csv(SCENARIOS_PATH)
-    hospitals = pd.read_csv(HOSPITALS_PATH)
+    patients = pd.read_csv(
+        PATIENTS_PATH
+    )
 
-    model = joblib.load(MODEL_PATH)
+    ambulances = pd.read_csv(
+        AMBULANCES_PATH
+    )
+
+    scenarios = pd.read_csv(
+        SCENARIOS_PATH
+    )
+
+    hospitals = pd.read_csv(
+        HOSPITALS_PATH
+    )
+
+    model = joblib.load(
+        MODEL_PATH
+    )
 
     return (
         patients,
@@ -56,7 +95,13 @@ def load_data():
     )
 
 
-def required_ambulance_level(severity):
+# ==============================================================
+# SEVERITY
+# ==============================================================
+
+def required_ambulance_level(
+    severity
+):
 
     return {
         "Critical": 2,
@@ -64,19 +109,35 @@ def required_ambulance_level(severity):
         "Moderate": 1,
         "Low": 1,
         "Non-Urgent": 1,
-    }[severity]
+    }.get(
+        severity,
+        1,
+    )
 
 
-def predict_severity(model, incident):
+def predict_severity(
+    model,
+    incident,
+):
 
-    prediction = model.predict(incident)[0]
+    prediction = model.predict(
+        incident
+    )[0]
 
     confidence = None
+
     probabilities = None
 
-    if hasattr(model, "predict_proba"):
+    if hasattr(
+        model,
+        "predict_proba",
+    ):
 
-        probabilities = model.predict_proba(incident)[0]
+        probabilities = (
+            model.predict_proba(
+                incident
+            )[0]
+        )
 
         confidence = float(
             np.max(probabilities)
@@ -89,6 +150,10 @@ def predict_severity(model, incident):
     )
 
 
+# ==============================================================
+# AMBULANCE
+# ==============================================================
+
 def select_ambulance(
     predicted_severity,
     incident_id,
@@ -97,14 +162,16 @@ def select_ambulance(
 ):
 
     candidates = scenarios[
-        scenarios["Incident_ID"] == incident_id
+        scenarios["Incident_ID"]
+        == incident_id
     ].copy()
 
     if candidates.empty:
 
         raise ValueError(
-            f"No dispatch scenarios found for "
-            f"Incident_ID={incident_id}"
+            f"No dispatch scenarios "
+            f"found for Incident_ID="
+            f"{incident_id}"
         )
 
     fleet = ambulances[
@@ -116,7 +183,9 @@ def select_ambulance(
     ].copy()
 
     candidates = candidates.drop(
-        columns=["Ambulance_Type"],
+        columns=[
+            "Ambulance_Type"
+        ],
         errors="ignore",
     )
 
@@ -127,7 +196,10 @@ def select_ambulance(
     )
 
     candidates = candidates[
-        candidates["Availability"] == "Available"
+        candidates[
+            "Availability"
+        ].astype(str).str.upper()
+        == "AVAILABLE"
     ].copy()
 
     if candidates.empty:
@@ -137,28 +209,41 @@ def select_ambulance(
             pd.DataFrame(),
         )
 
-    required_level = required_ambulance_level(
-        predicted_severity
+    required_level = (
+        required_ambulance_level(
+            predicted_severity
+        )
     )
 
-    candidates["Capability_Level"] = (
-        candidates["Ambulance_Type"]
+    candidates[
+        "Capability_Level"
+    ] = (
+        candidates[
+            "Ambulance_Type"
+        ]
         .map(AMBULANCE_CAPABILITY)
         .fillna(0)
     )
 
-    candidates["Capability_Match"] = (
-        candidates["Capability_Level"]
+    candidates[
+        "Capability_Match"
+    ] = (
+        candidates[
+            "Capability_Level"
+        ]
         >= required_level
     )
 
     compatible = candidates[
-        candidates["Capability_Match"]
+        candidates[
+            "Capability_Match"
+        ]
     ].copy()
 
     fallback = compatible.empty
 
     if not fallback:
+
         candidates = compatible
 
     candidates = candidates.sort_values(
@@ -170,17 +255,23 @@ def select_ambulance(
             True,
             True,
         ],
-    ).reset_index(drop=True)
+    ).reset_index(
+        drop=True
+    )
 
-    candidates["Fallback"] = fallback
-
-    selected = candidates.iloc[0].copy()
+    candidates[
+        "Fallback"
+    ] = fallback
 
     return (
-        selected,
+        candidates.iloc[0].copy(),
         candidates,
     )
 
+
+# ==============================================================
+# HOSPITAL
+# ==============================================================
 
 def hospital_suitability(
     condition,
@@ -245,27 +336,45 @@ def select_hospital(
 
     candidates = hospitals.copy()
 
-    candidates["Available_Beds"] = (
-        candidates["Hospital_Capacity"]
-        - candidates["Current_Load"]
-    ).clip(lower=0)
+    candidates[
+        "Available_Beds"
+    ] = (
+        candidates[
+            "Hospital_Capacity"
+        ]
+        - candidates[
+            "Current_Load"
+        ]
+    ).clip(
+        lower=0
+    )
 
-    candidates["Available_ICU"] = (
-        candidates["ICU_Capacity"]
-        - candidates["Current_ICU_Load"]
-    ).clip(lower=0)
+    candidates[
+        "Available_ICU"
+    ] = (
+        candidates[
+            "ICU_Capacity"
+        ]
+        - candidates[
+            "Current_ICU_Load"
+        ]
+    ).clip(
+        lower=0
+    )
 
     lat_difference = (
-        patient_lat
+        float(patient_lat)
         - candidates["Latitude"]
     )
 
     lon_difference = (
-        patient_lon
+        float(patient_lon)
         - candidates["Longitude"]
     )
 
-    candidates["Distance_KM"] = (
+    candidates[
+        "Distance_KM"
+    ] = (
         np.sqrt(
             lat_difference ** 2
             + lon_difference ** 2
@@ -273,25 +382,30 @@ def select_hospital(
         * 111
     )
 
-    candidates["Suitability"] = (
-        candidates["Hospital_Type"]
-        .apply(
-            lambda hospital_type:
-                hospital_suitability(
-                    condition,
-                    hospital_type,
-                )
+    candidates[
+        "Suitability"
+    ] = candidates[
+        "Hospital_Type"
+    ].apply(
+        lambda hospital_type:
+        hospital_suitability(
+            condition,
+            hospital_type,
         )
     )
 
     candidates = candidates[
-        candidates["Available_Beds"] > 0
+        candidates[
+            "Available_Beds"
+        ] > 0
     ].copy()
 
     if predicted_severity == "Critical":
 
         candidates = candidates[
-            candidates["Available_ICU"] > 0
+            candidates[
+                "Available_ICU"
+            ] > 0
         ].copy()
 
     if candidates.empty:
@@ -314,17 +428,23 @@ def select_hospital(
             False,
             False,
         ],
-    ).reset_index(drop=True)
-
-    selected = candidates.iloc[0].copy()
+    ).reset_index(
+        drop=True
+    )
 
     return (
-        selected,
+        candidates.iloc[0].copy(),
         candidates,
     )
 
 
-def dispatch_incident(incident_id):
+# ==============================================================
+# MAIN DISPATCH
+# ==============================================================
+
+def dispatch_incident(
+    incident_id
+):
 
     (
         patients,
@@ -335,13 +455,15 @@ def dispatch_incident(incident_id):
     ) = load_data()
 
     incident_rows = patients[
-        patients["Incident_ID"] == incident_id
+        patients["Incident_ID"]
+        == incident_id
     ].copy()
 
     if incident_rows.empty:
 
         raise ValueError(
-            f"Incident_ID={incident_id} was not found"
+            f"Incident_ID={incident_id} "
+            f"was not found."
         )
 
     model_columns = getattr(
@@ -353,8 +475,8 @@ def dispatch_incident(incident_id):
     if model_columns is None:
 
         raise ValueError(
-            "The saved model does not contain "
-            "feature_names_in_"
+            "Saved model does not contain "
+            "feature_names_in_."
         )
 
     missing_features = [
@@ -367,7 +489,9 @@ def dispatch_incident(incident_id):
 
         raise ValueError(
             "Missing model features: "
-            + ", ".join(missing_features)
+            + ", ".join(
+                missing_features
+            )
         )
 
     incident = incident_rows.iloc[0]
@@ -410,11 +534,27 @@ def dispatch_incident(incident_id):
             "confidence":
                 confidence,
 
-            "ambulance":
-                None,
+            "patient": {
+                "condition":
+                    str(
+                        incident["Condition"]
+                    ),
 
-            "hospital":
-                None,
+                "predicted_severity":
+                    predicted_severity,
+
+                "priority":
+                    f"P{SEVERITY_PRIORITY.get(
+                        predicted_severity,
+                        5,
+                    )}",
+
+                "confidence":
+                    confidence,
+            },
+
+            "ambulance": None,
+            "hospital": None,
         }
 
     (
@@ -453,7 +593,10 @@ def dispatch_incident(incident_id):
                 predicted_severity,
 
             "priority":
-                f"P{SEVERITY_PRIORITY[predicted_severity]}",
+                f"P{SEVERITY_PRIORITY.get(
+                    predicted_severity,
+                    5,
+                )}",
 
             "confidence":
                 confidence,
@@ -518,8 +661,7 @@ def dispatch_incident(incident_id):
                 ),
         },
 
-        "hospital":
-            None,
+        "hospital": None,
     }
 
     if selected_hospital is not None:
@@ -569,206 +711,110 @@ def dispatch_incident(incident_id):
                 ),
         }
 
-    else:
-
-        result["status"] = (
-            "NO_SUITABLE_HOSPITAL"
-        )
-
-    result["ambulance_candidates"] = (
-        ambulance_candidates[
-            [
-                "Ambulance_ID",
-                "Ambulance_Type",
-                "Predicted_ETA_Minutes",
-                "Distance_KM",
-                "Traffic_Level",
-                "Road_Condition",
-                "Capability_Match",
-                "Fallback",
-            ]
-        ]
-        .head(10)
-        .to_dict(
-            orient="records"
-        )
-    )
-
-    result["hospital_candidates"] = (
-        hospital_candidates[
-            [
-                "Hospital_ID",
-                "Hospital_Type",
-                "Distance_KM",
-                "Available_Beds",
-                "Available_ICU",
-                "Suitability",
-            ]
-        ]
-        .head(10)
-        .to_dict(
-            orient="records"
-        )
-        if not hospital_candidates.empty
-        else []
-    )
-
-    if probabilities is not None:
-
-        result[
-            "severity_probabilities"
-        ] = {
-
-            str(label):
-                float(probability)
-
-            for label, probability
-            in zip(
-                model.classes_,
-                probabilities,
-            )
-        }
-
     return result
 
 
+# ==============================================================
+# DISPLAY
+# ==============================================================
+
 def print_dispatch(result):
 
+    print()
     print("=" * 70)
-    print(
-        "AMBULANCE DISPATCH ENGINE"
-    )
+    print("DISPATCH DECISION")
     print("=" * 70)
 
     print(
-        f"Incident:           "
-        f"{result['incident_id']}"
+        f"Incident:       "
+        f"#{result['incident_id']}"
+    )
+
+    patient = result.get(
+        "patient",
+        {},
     )
 
     print(
-        f"Status:             "
-        f"{result['status']}"
-    )
-
-    patient = result["patient"]
-
-    print(
-        f"Condition:          "
-        f"{patient['condition']}"
+        f"Condition:      "
+        f"{patient.get('condition', '-')}"
     )
 
     print(
-        f"Predicted severity: "
-        f"{patient['predicted_severity']}"
+        f"Severity:       "
+        f"{patient.get('predicted_severity', '-')}"
     )
 
     print(
-        f"Priority:           "
-        f"{patient['priority']}"
+        f"Priority:       "
+        f"{patient.get('priority', '-')}"
     )
 
-    if patient["confidence"] is not None:
+    print(
+        f"Confidence:     "
+        f"{(
+            patient.get('confidence') or 0
+        ):.2%}"
+    )
 
-        print(
-            f"ML confidence:      "
-            f"{patient['confidence']:.2%}"
-        )
+    ambulance = result.get(
+        "ambulance"
+    )
 
-    if result["ambulance"]:
-
-        ambulance = result[
-            "ambulance"
-        ]
+    if ambulance:
 
         print()
-        print(
-            "RECOMMENDED AMBULANCE"
-        )
+        print("AMBULANCE")
         print("-" * 70)
 
         print(
-            f"Ambulance:          "
+            f"ID:             "
             f"{ambulance['ambulance_id']}"
         )
 
         print(
-            f"Type:               "
+            f"Type:           "
             f"{ambulance['ambulance_type']}"
         )
 
         print(
-            f"ETA:                "
-            f"{ambulance['eta_minutes']:.2f} min"
+            f"ETA:            "
+            f"{ambulance['eta_minutes']:.1f} min"
         )
 
         print(
-            f"Distance:           "
+            f"Distance:       "
             f"{ambulance['distance_km']:.2f} km"
         )
 
-        print(
-            f"Traffic:            "
-            f"{ambulance['traffic']}"
-        )
+    hospital = result.get(
+        "hospital"
+    )
 
-        print(
-            f"Road condition:     "
-            f"{ambulance['road_condition']}"
-        )
-
-        print(
-            f"Capability match:   "
-            f"{ambulance['capability_match']}"
-        )
-
-        if ambulance["fallback"]:
-
-            print(
-                "WARNING:            "
-                "No compatible ambulance "
-                "was available"
-            )
-
-    if result["hospital"]:
-
-        hospital = result[
-            "hospital"
-        ]
+    if hospital:
 
         print()
-        print(
-            "RECOMMENDED HOSPITAL"
-        )
+        print("HOSPITAL")
         print("-" * 70)
 
         print(
-            f"Hospital:           "
+            f"ID:             "
             f"{hospital['hospital_id']}"
         )
 
         print(
-            f"Type:               "
+            f"Type:           "
             f"{hospital['hospital_type']}"
         )
 
         print(
-            f"Distance:           "
-            f"{hospital['distance_km']:.2f} km"
-        )
-
-        print(
-            f"Available beds:     "
+            f"Available beds: "
             f"{hospital['available_beds']}"
         )
 
         print(
-            f"Available ICU:      "
+            f"Available ICU:  "
             f"{hospital['available_icu']}"
-        )
-
-        print(
-            f"Suitability:        "
-            f"{hospital['suitability']}/3"
         )
 
     print("=" * 70)
@@ -776,10 +822,10 @@ def print_dispatch(result):
 
 if __name__ == "__main__":
 
-    TEST_INCIDENT_ID = 1
-
     result = dispatch_incident(
-        TEST_INCIDENT_ID
+        1
     )
 
-    print_dispatch(result)
+    print_dispatch(
+        result
+    )

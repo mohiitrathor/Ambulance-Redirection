@@ -4,11 +4,18 @@ from pathlib import Path
 import pandas as pd
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(
+    __file__
+).resolve().parents[1]
 
-sys.path.insert(0, str(ROOT / "Dispatch"))
+sys.path.insert(
+    0,
+    str(ROOT / "Dispatch"),
+)
 
-from dispatch_engine import dispatch_incident
+from dispatch_engine import (
+    dispatch_incident,
+)
 
 
 PATIENTS_PATH = (
@@ -18,14 +25,23 @@ PATIENTS_PATH = (
 )
 
 
-def evaluate(sample_size=1000):
+# ==============================================================
+# EVALUATE
+# ==============================================================
+
+def evaluate(
+    sample_size=1000,
+):
 
     patients = pd.read_csv(
         PATIENTS_PATH
     )
 
     sample = patients.sample(
-        n=min(sample_size, len(patients)),
+        n=min(
+            sample_size,
+            len(patients),
+        ),
         random_state=42,
     )
 
@@ -33,7 +49,9 @@ def evaluate(sample_size=1000):
 
     print()
     print("=" * 70)
-    print("RUNNING DISPATCH EVALUATION")
+    print(
+        "RUNNING DISPATCH EVALUATION"
+    )
     print("=" * 70)
 
     for index, (_, incident) in enumerate(
@@ -59,119 +77,139 @@ def evaluate(sample_size=1000):
                 "hospital"
             )
 
+            patient = result.get(
+                "patient",
+                {},
+            )
+
             results.append({
+
                 "Incident_ID":
                     incident_id,
 
                 "Actual_Severity":
                     str(
-                        incident["Severity"]
+                        incident[
+                            "Severity"
+                        ]
                     ),
 
                 "Predicted_Severity":
-                    result.get(
-                        "predicted_severity",
-                        result.get(
-                            "patient",
-                            {}
-                        ).get(
-                            "predicted_severity"
-                        ),
+                    patient.get(
+                        "predicted_severity"
                     ),
 
                 "ML_Confidence":
-                    result.get(
-                        "confidence",
-                        result.get(
-                            "patient",
-                            {}
-                        ).get(
-                            "confidence"
-                        ),
+                    patient.get(
+                        "confidence"
                     ),
 
                 "Ambulance_Assigned":
                     ambulance is not None,
 
                 "Ambulance_ID":
-                    ambulance.get(
-                        "ambulance_id"
-                    )
-                    if ambulance
-                    else None,
+                    (
+                        ambulance.get(
+                            "ambulance_id"
+                        )
+                        if ambulance
+                        else None
+                    ),
 
                 "Ambulance_Type":
-                    ambulance.get(
-                        "ambulance_type"
-                    )
-                    if ambulance
-                    else None,
+                    (
+                        ambulance.get(
+                            "ambulance_type"
+                        )
+                        if ambulance
+                        else None
+                    ),
 
                 "ETA":
-                    ambulance.get(
-                        "eta_minutes"
-                    )
-                    if ambulance
-                    else None,
+                    (
+                        ambulance.get(
+                            "eta_minutes"
+                        )
+                        if ambulance
+                        else None
+                    ),
 
                 "Distance":
-                    ambulance.get(
-                        "distance_km"
-                    )
-                    if ambulance
-                    else None,
+                    (
+                        ambulance.get(
+                            "distance_km"
+                        )
+                        if ambulance
+                        else None
+                    ),
 
                 "Capability_Match":
-                    ambulance.get(
-                        "capability_match"
-                    )
-                    if ambulance
-                    else False,
+                    (
+                        ambulance.get(
+                            "capability_match",
+                            False,
+                        )
+                        if ambulance
+                        else False
+                    ),
 
                 "Fallback":
-                    ambulance.get(
-                        "fallback"
-                    )
-                    if ambulance
-                    else False,
+                    (
+                        ambulance.get(
+                            "fallback",
+                            False,
+                        )
+                        if ambulance
+                        else False
+                    ),
 
                 "Hospital_Assigned":
                     hospital is not None,
 
                 "Hospital_ID":
-                    hospital.get(
-                        "hospital_id"
-                    )
-                    if hospital
-                    else None,
+                    (
+                        hospital.get(
+                            "hospital_id"
+                        )
+                        if hospital
+                        else None
+                    ),
 
                 "Hospital_Type":
-                    hospital.get(
-                        "hospital_type"
-                    )
-                    if hospital
-                    else None,
+                    (
+                        hospital.get(
+                            "hospital_type"
+                        )
+                        if hospital
+                        else None
+                    ),
 
                 "Hospital_Distance":
-                    hospital.get(
-                        "distance_km"
-                    )
-                    if hospital
-                    else None,
+                    (
+                        hospital.get(
+                            "distance_km"
+                        )
+                        if hospital
+                        else None
+                    ),
 
                 "Available_ICU":
-                    hospital.get(
-                        "available_icu"
-                    )
-                    if hospital
-                    else None,
+                    (
+                        hospital.get(
+                            "available_icu"
+                        )
+                        if hospital
+                        else None
+                    ),
 
                 "Hospital_Suitability":
-                    hospital.get(
-                        "suitability"
-                    )
-                    if hospital
-                    else None,
+                    (
+                        hospital.get(
+                            "suitability"
+                        )
+                        if hospital
+                        else None
+                    ),
 
                 "Status":
                     result.get(
@@ -182,12 +220,15 @@ def evaluate(sample_size=1000):
         except Exception as error:
 
             results.append({
+
                 "Incident_ID":
                     incident_id,
 
                 "Actual_Severity":
                     str(
-                        incident["Severity"]
+                        incident[
+                            "Severity"
+                        ]
                     ),
 
                 "Predicted_Severity":
@@ -242,70 +283,106 @@ def evaluate(sample_size=1000):
         if index % 100 == 0:
 
             print(
-                f"Processed {index}/{len(sample)}"
+                f"Processed "
+                f"{index}/"
+                f"{len(sample)}"
             )
 
-    return pd.DataFrame(results)
+    return pd.DataFrame(
+        results
+    )
 
 
-def print_report(results):
+# ==============================================================
+# REPORT
+# ==============================================================
 
-    total = len(results)
+def print_report(
+    results,
+):
+
+    total = len(
+        results
+    )
+
+    if total == 0:
+
+        print(
+            "No evaluation results."
+        )
+
+        return
 
     ambulance_assigned = (
-        results["Ambulance_Assigned"]
-        .sum()
+        results[
+            "Ambulance_Assigned"
+        ].sum()
     )
 
     hospital_assigned = (
-        results["Hospital_Assigned"]
-        .sum()
+        results[
+            "Hospital_Assigned"
+        ].sum()
     )
 
     capability_matches = (
-        results["Capability_Match"]
-        .sum()
+        results[
+            "Capability_Match"
+        ].sum()
     )
 
     fallback_count = (
-        results["Fallback"]
-        .sum()
+        results[
+            "Fallback"
+        ].sum()
     )
 
-    valid_confidence = results[
-        "ML_Confidence"
-    ].dropna()
+    valid_confidence = (
+        results[
+            "ML_Confidence"
+        ].dropna()
+    )
 
-    valid_eta = results[
-        "ETA"
-    ].dropna()
+    valid_eta = (
+        results[
+            "ETA"
+        ].dropna()
+    )
 
-    valid_distance = results[
-        "Distance"
-    ].dropna()
+    valid_distance = (
+        results[
+            "Distance"
+        ].dropna()
+    )
 
     critical = results[
-        results["Predicted_Severity"]
+        results[
+            "Predicted_Severity"
+        ]
         == "Critical"
     ]
 
     critical_capability = (
-        critical["Capability_Match"].mean()
+        critical[
+            "Capability_Match"
+        ].mean()
         if not critical.empty
         else 0
     )
 
     critical_icu = (
-        critical["Available_ICU"]
-        .notna()
-        .mean()
+        critical[
+            "Available_ICU"
+        ].notna().mean()
         if not critical.empty
         else 0
     )
 
     print()
     print("=" * 70)
-    print("DISPATCH ENGINE EVALUATION")
+    print(
+        "DISPATCH ENGINE EVALUATION"
+    )
     print("=" * 70)
 
     print(
@@ -355,8 +432,9 @@ def print_report(results):
         )
 
     print()
-
-    print("CRITICAL INCIDENTS")
+    print(
+        "CRITICAL INCIDENTS"
+    )
     print("-" * 70)
 
     print(
@@ -375,8 +453,9 @@ def print_report(results):
     )
 
     print()
-
-    print("PREDICTED SEVERITY")
+    print(
+        "PREDICTED SEVERITY"
+    )
     print("-" * 70)
 
     severity_counts = (
@@ -398,8 +477,9 @@ def print_report(results):
         )
 
     print()
-
-    print("HOSPITAL SELECTION")
+    print(
+        "HOSPITAL SELECTION"
+    )
     print("-" * 70)
 
     hospital_counts = (
@@ -418,13 +498,17 @@ def print_report(results):
             f"{count:>6}"
         )
 
-    print()
-
     errors = results[
-        results["Status"]
+        results[
+            "Status"
+        ]
         .astype(str)
-        .str.startswith("ERROR")
+        .str.startswith(
+            "ERROR"
+        )
     ]
+
+    print()
 
     print(
         f"Engine errors:             "
@@ -434,10 +518,16 @@ def print_report(results):
     print("=" * 70)
 
 
+# ==============================================================
+# MAIN
+# ==============================================================
+
 if __name__ == "__main__":
 
     results = evaluate(
         sample_size=1000
     )
 
-    print_report(results)
+    print_report(
+        results
+    )
