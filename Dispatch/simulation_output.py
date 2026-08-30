@@ -175,6 +175,16 @@ class SimulationOutput:
                     "GOOD",
                 )
             ),
+
+            "route_distance_km": (
+                round(float(ambulance.route_distance_km), 3)
+                if getattr(ambulance, "route_distance_km", None) is not None
+                else None
+            ),
+
+            "route_waypoints": getattr(ambulance, "route_waypoints", None),
+
+            "routing_engine": getattr(ambulance, "routing_engine", None),
         }
 
     # ==========================================================

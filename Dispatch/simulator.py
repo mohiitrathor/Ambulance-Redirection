@@ -67,6 +67,7 @@ from state import (
 
 from decision_logger import DecisionLogger
 from simulation_output import SimulationOutput
+from routing import routing_engine
 
 
 # ==============================================================
@@ -88,6 +89,13 @@ class Simulator:
 
         self.logger = DecisionLogger()
         self.output = SimulationOutput()
+
+        # ------------------------------------------------------
+        # ROUTING & VEHICLE KINEMATICS (M8)
+        # ------------------------------------------------------
+
+        self.routing_engine = routing_engine
+        self.active_routes = {}
 
         # ------------------------------------------------------
         # DATASETS
@@ -498,6 +506,25 @@ class Simulator:
                 if severity == "Critical":
                     hosp.current_icu_load += 1
 
+            if hosp and ambulance:
+                route = self.routing_engine.generate_route(
+                    origin=(float(ambulance.latitude), float(ambulance.longitude)),
+                    destination=(float(hosp.latitude), float(hosp.longitude)),
+                    vehicle_type=str(ambulance.ambulance_type),
+                    traffic_level=str(getattr(ambulance, "traffic_level", "NORMAL")),
+                    road_condition=str(getattr(ambulance, "road_condition", "GOOD")),
+                )
+                if ambulance.eta_minutes is not None and ambulance.eta_minutes > 1.0:
+                    route.total_duration_minutes = float(ambulance.eta_minutes)
+                else:
+                    ambulance.eta_minutes = route.initial_eta_minutes
+                    ambulance.base_eta_minutes = route.initial_eta_minutes
+
+                self.active_routes[ambulance.ambulance_id] = route
+                ambulance.route_distance_km = route.route_distance_km
+                ambulance.route_waypoints = [list(wp) for wp in route.waypoints]
+                ambulance.routing_engine = route.routing_engine
+
         # ------------------------------------------------------
         # Redirect history
         # ------------------------------------------------------
@@ -747,6 +774,17 @@ class Simulator:
             hosp_state.current_load += 1
             if predicted_severity == "Critical":
                 hosp_state.current_icu_load += 1
+
+            route = self.routing_engine.generate_route(
+                origin=(float(selected_amb.latitude), float(selected_amb.longitude)),
+                destination=(float(hosp_state.latitude), float(hosp_state.longitude)),
+                vehicle_type=str(selected_amb.ambulance_type),
+                traffic_level=str(getattr(selected_amb, "traffic_level", "NORMAL")),
+                road_condition=str(getattr(selected_amb, "road_condition", "GOOD")),
+            )
+            self.active_routes[selected_amb.ambulance_id] = route
+            selected_amb.route_waypoints = [list(wp) for wp in route.waypoints]
+            selected_amb.routing_engine = route.routing_engine
 
         self.redirect_history[incident_id] = set()
 
@@ -1093,8 +1131,23 @@ class Simulator:
             if ambulance.status != "EN_ROUTE":
                 continue
 
-            if ambulance.eta_minutes is None:
-                continue
+            # M8 Kinematics: Advance vehicle position along active route waypoints
+            route = self.active_routes.get(ambulance.ambulance_id)
+            if route is not None:
+                route.elapsed_minutes += minutes
+                new_lat, new_lon = self.routing_engine.interpolate_position(
+                    route,
+                    route.elapsed_minutes,
+                )
+                ambulance.latitude = new_lat
+                ambulance.longitude = new_lon
+
+                # Trim waypoints to only remaining segment ahead
+                total_dur = max(0.001, route.total_duration_minutes)
+                progress_ratio = min(1.0, max(0.0, route.elapsed_minutes / total_dur))
+                if len(route.waypoints) > 1:
+                    idx = min(len(route.waypoints) - 2, int(progress_ratio * (len(route.waypoints) - 1)))
+                    ambulance.route_waypoints = [[new_lat, new_lon]] + [list(wp) for wp in route.waypoints[idx + 1:]]
 
             ambulance.eta_minutes = max(
                 0,
@@ -1106,6 +1159,15 @@ class Simulator:
                 ambulance.eta_minutes = 0
 
                 ambulance.status = "ARRIVED"
+
+                # Snap coordinates exactly to destination hospital
+                target_hosp = self.state.hospitals.get(ambulance.hospital_id)
+                if target_hosp is not None:
+                    ambulance.latitude = float(target_hosp.latitude)
+                    ambulance.longitude = float(target_hosp.longitude)
+
+                ambulance.route_waypoints = []
+                self.active_routes.pop(ambulance.ambulance_id, None)
 
                 incident = (
                     self.state.incidents.get(
@@ -1169,8 +1231,12 @@ class Simulator:
         try:
 
             return float(
-                ambulance.estimate_eta_to_hospital(
-                    hospital
+                self.routing_engine.calculate_eta(
+                    origin=(float(ambulance.latitude), float(ambulance.longitude)),
+                    destination=(float(hospital.latitude), float(hospital.longitude)),
+                    vehicle_type=str(ambulance.ambulance_type),
+                    traffic_level=str(getattr(ambulance, "traffic_level", "NORMAL")),
+                    road_condition=str(getattr(ambulance, "road_condition", "GOOD")),
                 )
             )
 
@@ -1183,7 +1249,7 @@ class Simulator:
             try:
 
                 return float(
-                    ambulance.calculate_eta_to_hospital(
+                    ambulance.estimate_eta_to_hospital(
                         hospital
                     )
                 )
@@ -1567,6 +1633,20 @@ class Simulator:
             new_hospital_id
         )
 
+        # M8 Kinematics: Generate new route from current position to new hospital
+        new_route = self.routing_engine.generate_route(
+            origin=(float(ambulance.latitude), float(ambulance.longitude)),
+            destination=(float(new_hospital.latitude), float(new_hospital.longitude)),
+            vehicle_type=str(ambulance.ambulance_type),
+            traffic_level=str(getattr(ambulance, "traffic_level", "NORMAL")),
+            road_condition=str(getattr(ambulance, "road_condition", "GOOD")),
+        )
+        self.active_routes[ambulance.ambulance_id] = new_route
+        ambulance.route_distance_km = new_route.route_distance_km
+        ambulance.route_waypoints = [list(wp) for wp in new_route.waypoints]
+        ambulance.routing_engine = new_route.routing_engine
+        ambulance.base_eta_minutes = new_route.initial_eta_minutes
+
         if eta_after is not None:
 
             ambulance.eta_minutes = (
@@ -1770,6 +1850,20 @@ class Simulator:
         incident.status = "REDIRECTED"
         ambulance.hospital_id = new_hospital_id
         ambulance.eta_minutes = float(eta_after)
+
+        # M8 Kinematics: Generate new route from current position to new hospital
+        new_route = self.routing_engine.generate_route(
+            origin=(float(ambulance.latitude), float(ambulance.longitude)),
+            destination=(float(new_hospital.latitude), float(new_hospital.longitude)),
+            vehicle_type=str(ambulance.ambulance_type),
+            traffic_level=str(getattr(ambulance, "traffic_level", "NORMAL")),
+            road_condition=str(getattr(ambulance, "road_condition", "GOOD")),
+        )
+        self.active_routes[ambulance.ambulance_id] = new_route
+        ambulance.route_distance_km = new_route.route_distance_km
+        ambulance.route_waypoints = [list(wp) for wp in new_route.waypoints]
+        ambulance.routing_engine = new_route.routing_engine
+        ambulance.base_eta_minutes = new_route.initial_eta_minutes
 
         operator_reason = f"[OPERATOR] {reason}" if not str(reason).startswith("[OPERATOR]") else str(reason)
 

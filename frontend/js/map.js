@@ -196,12 +196,16 @@ class TacticalMap {
         this.activeAmbulanceMarkers.set(ambulance.ambulance_id, ambMarker);
         this.enRouteAmbulancesLayer.addLayer(ambMarker);
 
-        // 2. Direct Dashed Polyline Route between Ambulance and Hospital
+        // 2. Multi-point tactical polyline route between Ambulance and Hospital
+        const routePoints = (ambulance.route_waypoints && ambulance.route_waypoints.length > 1)
+          ? ambulance.route_waypoints
+          : [
+              [ambulance.latitude, ambulance.longitude],
+              [hospital.latitude, hospital.longitude],
+            ];
+
         const routeLine = L.polyline(
-          [
-            [ambulance.latitude, ambulance.longitude],
-            [hospital.latitude, hospital.longitude],
-          ],
+          routePoints,
           {
             color: unitColor,
             weight: 3,

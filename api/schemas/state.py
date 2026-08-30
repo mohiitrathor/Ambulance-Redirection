@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 
 # ==============================================================
@@ -36,6 +36,9 @@ class AmbulanceResponse(BaseModel):
     base_eta_minutes: Optional[float] = None
     traffic_level: str
     road_condition: str
+    route_distance_km: Optional[float] = None
+    route_waypoints: Optional[List[List[float]]] = None
+    routing_engine: Optional[str] = None
 
 
 # ==============================================================
