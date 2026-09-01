@@ -1,0 +1,67 @@
+{
+  "version": "128020d",
+  "created_at": "2026-09-01T16:29:16.452912+00:00",
+  "description": "API Test Baseline",
+  "cases": {
+    "REG_PILEUP": {
+      "case_id": "REG_PILEUP",
+      "scenario_id": "NH48_MULTI_VEHICLE_PILEUP",
+      "seed": 42,
+      "resilience_score": 88.12,
+      "average_eta_minutes": 4.65,
+      "dispatch_success_pct": 100.0,
+      "unresolved_casualties": 2,
+      "deterministic_hash": "db73a683a771e359e59a81f1"
+    },
+    "REG_EARTHQUAKE": {
+      "case_id": "REG_EARTHQUAKE",
+      "scenario_id": "DUAL_MCI_EARTHQUAKE",
+      "seed": 42,
+      "resilience_score": 91.2,
+      "average_eta_minutes": 1.96,
+      "dispatch_success_pct": 100.0,
+      "unresolved_casualties": 0,
+      "deterministic_hash": "3c738c911a7e582fb3485724"
+    },
+    "REG_SATURATION": {
+      "case_id": "REG_SATURATION",
+      "scenario_id": "CITYWIDE_HOSPITAL_SATURATION",
+      "seed": 42,
+      "resilience_score": 77.5,
+      "average_eta_minutes": 1.39,
+      "dispatch_success_pct": 100.0,
+      "unresolved_casualties": 0,
+      "deterministic_hash": "408c56b8eb14c32cb4a5ac4b"
+    },
+    "REG_SURGE_25": {
+      "case_id": "REG_SURGE_25",
+      "scenario_id": "CASUALTY_SURGE_25",
+      "seed": 42,
+      "resilience_score": 91.3,
+      "average_eta_minutes": 3.63,
+      "dispatch_success_pct": 100.0,
+      "unresolved_casualties": 0,
+      "deterministic_hash": "f213ca11ae76be096103c301"
+    },
+    "REG_SURGE_50": {
+      "case_id": "REG_SURGE_50",
+      "scenario_id": "CASUALTY_SURGE_50",
+      "seed": 42,
+      "resilience_score": 91.9,
+      "average_eta_minutes": 4.5,
+      "dispatch_success_pct": 100.0,
+      "unresolved_casualties": 0,
+      "deterministic_hash": "2831e0313643af67a99fc5e8"
+    },
+    "REG_SURGE_100": {
+      "case_id": "REG_SURGE_100",
+      "scenario_id": "CASUALTY_SURGE_100",
+      "seed": 42,
+      "resilience_score": 92.2,
+      "average_eta_minutes": 5.9,
+      "dispatch_success_pct": 100.0,
+      "unresolved_casualties": 0,
+      "deterministic_hash": "df136a40d3c2cbd0c7e47903"
+    }
+  }
+}

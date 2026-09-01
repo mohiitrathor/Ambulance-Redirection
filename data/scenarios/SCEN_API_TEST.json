@@ -1,0 +1,31 @@
+{
+  "scenario_id": "SCEN_API_TEST",
+  "name": "API Scenario Test",
+  "description": "Created via REST API",
+  "config": {
+    "duration_minutes": 5,
+    "tick_minutes": 1.0,
+    "snapshot_interval_ticks": 2,
+    "deterministic_seed": 999,
+    "routing_engine_version": "M8_LocalApproxRouter",
+    "coordination_version": "M9_FleetCoordinator"
+  },
+  "scheduled_incidents": [
+    {
+      "sim_time": 0,
+      "incident_id": 1,
+      "custom_data": null,
+      "latitude": null,
+      "longitude": null,
+      "condition": null,
+      "severity": null,
+      "notes": ""
+    }
+  ],
+  "scheduled_mcis": [],
+  "scheduled_repositions": [],
+  "scheduled_redirections": [],
+  "scheduled_hospital_events": [],
+  "metadata": {},
+  "created_at": "2026-09-01T16:30:04.478064+00:00"
+}

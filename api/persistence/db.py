@@ -98,11 +98,64 @@ CREATE TABLE IF NOT EXISTS historical_events (
     created_at TEXT NOT NULL
 );
 
+-- 6. FLEET REPOSITIONING MOVEMENTS
+CREATE TABLE IF NOT EXISTS historical_repositions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL REFERENCES simulation_runs(run_id) ON DELETE CASCADE,
+    ambulance_id TEXT NOT NULL,
+    origin_zone TEXT NOT NULL,
+    target_zone TEXT NOT NULL,
+    origin_lat REAL NOT NULL,
+    origin_lon REAL NOT NULL,
+    target_lat REAL NOT NULL,
+    target_lon REAL NOT NULL,
+    started_sim_time INTEGER NOT NULL,
+    completed_sim_time INTEGER,
+    reason TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+-- 7. MULTI-CASUALTY INCIDENT (MCI) EVENTS
+CREATE TABLE IF NOT EXISTS historical_mci_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL REFERENCES simulation_runs(run_id) ON DELETE CASCADE,
+    mci_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    declared_sim_time INTEGER NOT NULL,
+    resolved_sim_time INTEGER,
+    status TEXT NOT NULL,
+    total_casualties INTEGER NOT NULL,
+    notes TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE(run_id, mci_id)
+);
+
+-- 8. MCI CHILD INCIDENT ASSOCIATIONS
+CREATE TABLE IF NOT EXISTS historical_mci_children (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL REFERENCES simulation_runs(run_id) ON DELETE CASCADE,
+    mci_id TEXT NOT NULL,
+    incident_id INTEGER NOT NULL,
+    severity TEXT,
+    priority INTEGER,
+    ambulance_id TEXT,
+    hospital_id TEXT,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(run_id, mci_id, incident_id)
+);
+
 -- OPTIMIZED QUERY INDEXES
 CREATE INDEX IF NOT EXISTS idx_incidents_run ON historical_incidents(run_id);
 CREATE INDEX IF NOT EXISTS idx_dispatches_run ON historical_dispatches(run_id, incident_id);
 CREATE INDEX IF NOT EXISTS idx_redirections_run ON historical_redirections(run_id, incident_id);
 CREATE INDEX IF NOT EXISTS idx_events_run ON historical_events(run_id, sim_time);
+CREATE INDEX IF NOT EXISTS idx_repositions_run ON historical_repositions(run_id, ambulance_id);
+CREATE INDEX IF NOT EXISTS idx_mci_run ON historical_mci_events(run_id, mci_id);
+CREATE INDEX IF NOT EXISTS idx_mci_children_run ON historical_mci_children(run_id, mci_id);
 """
 
 

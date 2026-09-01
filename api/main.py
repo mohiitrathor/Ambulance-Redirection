@@ -14,6 +14,12 @@ from api.routers import (
     redirection,
     simulation,
     analytics,
+    coordination,
+    scenarios,
+    drills,
+    replay_analysis,
+    post_incident,
+    optimization,
 )
 
 
@@ -115,6 +121,30 @@ app.include_router(
     analytics.router,
     prefix="/analytics",
     tags=["Analytics"],
+)
+
+app.include_router(
+    coordination.router,
+)
+
+app.include_router(
+    scenarios.router,
+)
+
+app.include_router(
+    drills.router,
+)
+
+app.include_router(
+    replay_analysis.router,
+)
+
+app.include_router(
+    post_incident.router,
+)
+
+app.include_router(
+    optimization.router,
 )
 
 

@@ -185,6 +185,14 @@ class SimulationOutput:
             "route_waypoints": getattr(ambulance, "route_waypoints", None),
 
             "routing_engine": getattr(ambulance, "routing_engine", None),
+
+            "is_repositioning": bool(getattr(ambulance, "is_repositioning", False)),
+
+            "reposition_target": getattr(ambulance, "reposition_target", None),
+
+            "reposition_origin_zone": getattr(ambulance, "reposition_origin_zone", None),
+
+            "reposition_target_zone": getattr(ambulance, "reposition_target_zone", None),
         }
 
     # ==========================================================

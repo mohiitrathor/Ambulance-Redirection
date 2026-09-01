@@ -107,3 +107,200 @@ export const getHistoricalDecisions = (runId = null) =>
 export const getHistoricalEvents = (runId = null, limit = 100) =>
   request(runId !== null ? `/analytics/events?run_id=${runId}&limit=${limit}` : `/analytics/events?limit=${limit}`);
 
+// --- Fleet Coordination (M9) ---
+export const getCoverage = () => request('/coordination/coverage');
+export const getRepositionRecommendations = () => request('/coordination/reposition/recommendations');
+export const getHospitalProjections = () => request('/coordination/hospital-projections');
+export const executeReposition = (ambulanceId, targetLat, targetLon, reason = 'COVERAGE_DEFICIT') =>
+  request('/coordination/reposition/execute', {
+    method: 'POST',
+    body: JSON.stringify({
+      ambulance_id: ambulanceId,
+      target_lat: parseFloat(targetLat),
+      target_lon: parseFloat(targetLon),
+      reason: reason,
+    }),
+  });
+export const cancelReposition = (ambulanceId) =>
+  request(`/coordination/reposition/cancel/${ambulanceId}`, { method: 'POST' });
+
+// --- MCI Coordination (M9 Phase 4) ---
+export const getActiveMCIs = () => request('/coordination/mci/active');
+export const getMCIDetail = (mciId) => request(`/coordination/mci/${mciId}`);
+export const declareMCI = (payload) =>
+  request('/coordination/mci/declare', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+// --- Disaster Drills & Stress Testing (M10 Phase 2) ---
+export const getDrills = () => request('/drills');
+export const runDrill = (drillName, seed = 42, parameters = {}) =>
+  request('/drills/run', {
+    method: 'POST',
+    body: JSON.stringify({ drill_name: drillName, seed: parseInt(seed), parameters: parameters }),
+  });
+export const runStressTest = (casualtyCount = 50, seed = 42, mciCount = 2, hospitalSurge = false) =>
+  request('/drills/stress', {
+    method: 'POST',
+    body: JSON.stringify({
+      casualty_count: parseInt(casualtyCount),
+      seed: parseInt(seed),
+      mci_count: parseInt(mciCount),
+      hospital_surge: Boolean(hospitalSurge),
+    }),
+  });
+export const compareStressTests = (casualtyCounts = [25, 50, 100], seed = 42) =>
+  request('/drills/compare', {
+    method: 'POST',
+    body: JSON.stringify({ casualty_counts: casualtyCounts, seed: parseInt(seed) }),
+  });
+
+// --- Operational Replay & Scenario Analysis (M10 Phase 3) ---
+export const getReplays = () => request('/replays');
+export const getReplayTimeline = (runId, eventType = null, entityId = null) => {
+  const params = new URLSearchParams();
+  if (eventType) params.append('event_type', eventType);
+  if (entityId) params.append('entity_id', entityId);
+  const q = params.toString();
+  return request(`/replays/${runId}/timeline${q ? '?' + q : ''}`);
+};
+export const getReplayEventDetail = (runId, eventIndex) =>
+  request(`/replays/${runId}/events/${eventIndex}`);
+export const getReplayAnalysis = (runId) =>
+  request(`/replays/${runId}/analysis`);
+export const seekReplayState = (runId, simTime, sessionId = 'default') =>
+  request(`/replays/${runId}/state/${simTime}?session_id=${sessionId}`);
+export const compareScenarios = (runIdA, runIdB) =>
+  request('/replays/compare', {
+    method: 'POST',
+    body: JSON.stringify({ run_id_a: runIdA, run_id_b: runIdB }),
+  });
+export const compareBeforeAfter = (runId, timeA, timeB) =>
+  request(`/replays/${runId}/before-after`, {
+    method: 'POST',
+    body: JSON.stringify({ time_a: parseInt(timeA), time_b: parseInt(timeB) }),
+  });
+export const generateDrillReport = (runId, format = 'json') =>
+  request(`/replays/${runId}/report`, {
+    method: 'POST',
+    body: JSON.stringify({ format: format }),
+  });
+export const setReplayMode = (runId, mode, sessionId = 'default') =>
+  request(`/replays/${runId}/mode`, {
+    method: 'POST',
+    body: JSON.stringify({ mode: mode, session_id: sessionId }),
+  });
+
+// --- Post-Incident Review & Continuous Regression (M10 Phase 4) ---
+export const getPIR = (runId) => request(`/replays/${runId}/pir`);
+export const getPIRFindings = (runId) => request(`/replays/${runId}/findings`);
+export const getPIRRootCauses = (runId) => request(`/replays/${runId}/root-causes`);
+export const exportPIRReport = (runId, format = 'json') =>
+  request(`/replays/${runId}/pir/report`, {
+    method: 'POST',
+    body: JSON.stringify({ format: format }),
+  });
+export const comparePIRs = (runIdA, runIdB) =>
+  request('/replays/pir/compare', {
+    method: 'POST',
+    body: JSON.stringify({ run_id_a: runIdA, run_id_b: runIdB }),
+  });
+export const getRegressionBaseline = () => request('/regression/baseline');
+export const createRegressionBaseline = (description = 'Standard Regression Baseline') =>
+  request('/regression/baseline/create', {
+    method: 'POST',
+    body: JSON.stringify({ description: description }),
+  });
+export const runRegressionSuite = (runId = null) =>
+  request('/regression/run', {
+    method: 'POST',
+    body: JSON.stringify({ run_id: runId }),
+  });
+export const getRegressionResults = () => request('/regression/results');
+export const getRegressionResult = (runId) => request(`/regression/results/${runId}`);
+
+// --- Optimization & Decision Intelligence APIs (M11 Phase 1 & 2) ---
+export const getOptimizationSnapshot = () => request('/optimization/snapshot');
+export const getOptimizationRecommendations = () => request('/optimization/recommendations');
+export const getOptimizationRecommendation = (recId) => request(`/optimization/recommendations/${recId}`);
+export const simulateOptimizationRecommendation = (recId) =>
+  request('/optimization/simulate', {
+    method: 'POST',
+    body: JSON.stringify({ recommendation_id: recId }),
+  });
+export const approveOptimizationRecommendation = (recId, data = {}) =>
+  request(`/optimization/recommendations/${recId}/approve`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+export const rejectOptimizationRecommendation = (recId, data = {}) =>
+  request(`/optimization/recommendations/${recId}/reject`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+export const getOptimizationExecutions = (limit = 50) => request(`/optimization/executions?limit=${limit}`);
+export const getOptimizationExecution = (execId) => request(`/optimization/executions/${execId}`);
+export const getOptimizationCopilotSummary = () => request('/optimization/copilot/summary');
+export const getOptimizationHealth = () => request('/optimization/health');
+
+// M11 Phase 3: Adaptive Policy & Bounded Autonomy APIs
+export const getPolicyOverview = () => request('/optimization/policy');
+export const getPolicyConfig = () => request('/optimization/policy/config');
+export const setPolicyMode = (mode, operatorId = 'OPERATOR_COMMANDER', reason = '') =>
+  request('/optimization/policy/mode', {
+    method: 'POST',
+    body: JSON.stringify({ mode, operator_id: operatorId, reason }),
+  });
+export const toggleKillSwitch = (action = 'ENGAGE', operatorId = 'OPERATOR_COMMANDER', reason = '') =>
+  request('/optimization/policy/kill-switch', {
+    method: 'POST',
+    body: JSON.stringify({ action, operator_id: operatorId, reason }),
+  });
+export const getPolicyPerformance = () => request('/optimization/policy/performance');
+export const getPolicyDecisions = (limit = 50) => request(`/optimization/policy/decisions?limit=${limit}`);
+export const evaluatePolicy = (recommendationId) =>
+  request('/optimization/policy/evaluate', {
+    method: 'POST',
+    body: JSON.stringify({ recommendation_id: recommendationId }),
+  });
+export const rollbackExecution = (executionId, operatorId = 'OPERATOR_DISPATCHER', reason = '') =>
+  request(`/optimization/policy/rollback/${executionId}`, {
+    method: 'POST',
+    body: JSON.stringify({ operator_id: operatorId, reason }),
+  });
+
+// M11 Phase 4: Operational Learning, Calibration & Adaptation APIs
+export const getLearningReport = () => request('/optimization/learning');
+export const getLearningPerformance = (minSim = 0, maxSim = null) => {
+  const q = maxSim !== null ? `?min_sim_time=${minSim}&max_sim_time=${maxSim}` : `?min_sim_time=${minSim}`;
+  return request(`/optimization/learning/performance${q}`);
+};
+export const getLearningCalibration = () => request('/optimization/learning/calibration');
+export const getLearningDrift = () => request('/optimization/learning/drift');
+export const getLearningRecommendations = () => request('/optimization/learning/recommendations');
+export const getLearningRecommendation = (id) => request(`/optimization/learning/recommendations/${id}`);
+export const comparePolicies = (policyA = null, policyB = null) =>
+  request('/optimization/learning/compare', {
+    method: 'POST',
+    body: JSON.stringify({ policy_a: policyA, policy_b: policyB }),
+  });
+export const approveLearningRecommendation = (id, operatorId = 'OPERATOR_DISPATCHER') =>
+  request(`/optimization/learning/recommendations/${id}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ operator_id: operatorId }),
+  });
+export const rejectLearningRecommendation = (id, operatorId = 'OPERATOR_DISPATCHER', reason = '') =>
+  request(`/optimization/learning/recommendations/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ operator_id: operatorId, reason }),
+  });
+export const getPolicyHistory = () => request('/optimization/policy/history');
+export const rollbackPolicyVersion = (policyVersion, operatorId = 'OPERATOR_DISPATCHER', reason = '') =>
+  request(`/optimization/learning/rollback/${policyVersion}`, {
+    method: 'POST',
+    body: JSON.stringify({ operator_id: operatorId, reason }),
+  });
+
+
+

@@ -39,6 +39,10 @@ class AmbulanceResponse(BaseModel):
     route_distance_km: Optional[float] = None
     route_waypoints: Optional[List[List[float]]] = None
     routing_engine: Optional[str] = None
+    is_repositioning: Optional[bool] = False
+    reposition_target: Optional[List[float]] = None
+    reposition_origin_zone: Optional[str] = None
+    reposition_target_zone: Optional[str] = None
 
 
 # ==============================================================

@@ -1,0 +1,19 @@
+{
+  "mode": "GUARDED",
+  "min_confidence_reposition": 0.95,
+  "min_confidence_diversion": 0.99,
+  "min_action_interval_seconds": 15.0,
+  "zone_cooldown_ticks": 3,
+  "max_autonomous_actions_per_window": 5,
+  "window_size_ticks": 10,
+  "max_consecutive_autonomous_actions": 3,
+  "fleet_safety_floor": 2,
+  "allow_full_mode": false,
+  "kill_switch_active": false,
+  "version": "1.0.0",
+  "policy_version": "v1",
+  "created_at": "2026-09-01T16:19:34.027541+00:00",
+  "parent_version": null,
+  "change_reason": "Initial production baseline",
+  "approved_by": "SYSTEM_INIT"
+}

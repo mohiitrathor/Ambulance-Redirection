@@ -15,6 +15,13 @@ import { setupEvents } from './components/events.js';
 import { setupDecisions } from './components/decisions.js';
 import { setupDetailDrawer } from './components/detail_drawer.js';
 import { setupAnalytics } from './components/analytics.js';
+import { coordinationComponent } from './components/coordination.js';
+import { DrillsController } from './components/drills.js';
+import { ReplayController } from './components/replay.js';
+import { ScenarioAnalysisController } from './components/scenario_analysis.js';
+import { PIRController } from './components/pir.js';
+import { RegressionController } from './components/regression.js';
+import { OptimizationController } from './components/optimization.js';
 
 let pollCounter = 0;
 let isPolling = false;
@@ -34,6 +41,24 @@ async function bootstrap() {
   setupDecisions();
   setupDetailDrawer();
   setupAnalytics();
+  coordinationComponent.init();
+  new DrillsController();
+
+  const replayCtrl = new ReplayController();
+  replayCtrl.init();
+  const analysisCtrl = new ScenarioAnalysisController(replayCtrl);
+  analysisCtrl.init();
+
+  const pirCtrl = new PIRController();
+  pirCtrl.init();
+  const regCtrl = new RegressionController();
+  regCtrl.init();
+
+  const optCtrl = new OptimizationController();
+  optCtrl.init();
+  document.getElementById('nav-btn-optimization')?.addEventListener('click', () => {
+    optCtrl.loadOptimizationData();
+  });
 
   // 3. Initial Lucide Icons Render
   if (window.lucide) {

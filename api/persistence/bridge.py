@@ -278,6 +278,122 @@ class PersistenceBridge:
         }
         self._enqueue(payload)
 
+    def record_reposition_start(
+        self,
+        run_id: int,
+        ambulance_id: str,
+        origin_zone: str,
+        target_zone: str,
+        origin_lat: float,
+        origin_lon: float,
+        target_lat: float,
+        target_lon: float,
+        started_sim_time: int,
+        reason: str,
+    ):
+        """Enqueue repositioning departure event."""
+        payload = {
+            "type": "REPOSITION_START",
+            "run_id": int(run_id),
+            "ambulance_id": str(ambulance_id),
+            "origin_zone": str(origin_zone),
+            "target_zone": str(target_zone),
+            "origin_lat": float(origin_lat),
+            "origin_lon": float(origin_lon),
+            "target_lat": float(target_lat),
+            "target_lon": float(target_lon),
+            "started_sim_time": int(started_sim_time),
+            "reason": str(reason),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self._enqueue(payload)
+
+    def record_reposition_complete(
+        self,
+        run_id: int,
+        ambulance_id: str,
+        completed_sim_time: int,
+        final_status: str = "COMPLETED",
+    ):
+        """Enqueue repositioning arrival, interception, or cancellation event."""
+        payload = {
+            "type": "REPOSITION_COMPLETE",
+            "run_id": int(run_id),
+            "ambulance_id": str(ambulance_id),
+            "completed_sim_time": int(completed_sim_time),
+            "final_status": str(final_status),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self._enqueue(payload)
+
+    def record_mci_declared(
+        self,
+        run_id: int,
+        mci_id: str,
+        name: str,
+        latitude: float,
+        longitude: float,
+        declared_sim_time: int,
+        total_casualties: int,
+        notes: str = "",
+    ):
+        """Enqueue parent MCI declaration event."""
+        payload = {
+            "type": "MCI_DECLARED",
+            "run_id": int(run_id),
+            "mci_id": str(mci_id),
+            "name": str(name),
+            "latitude": float(latitude),
+            "longitude": float(longitude),
+            "declared_sim_time": int(declared_sim_time),
+            "total_casualties": int(total_casualties),
+            "notes": str(notes),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self._enqueue(payload)
+
+    def record_mci_child(
+        self,
+        run_id: int,
+        mci_id: str,
+        incident_id: int,
+        severity: Optional[str] = None,
+        priority: Optional[int] = None,
+        ambulance_id: Optional[str] = None,
+        hospital_id: Optional[str] = None,
+        status: str = "DISPATCHED",
+    ):
+        """Enqueue child incident association with parent MCI."""
+        payload = {
+            "type": "MCI_CHILD",
+            "run_id": int(run_id),
+            "mci_id": str(mci_id),
+            "incident_id": int(incident_id),
+            "severity": str(severity) if severity else None,
+            "priority": int(priority) if priority is not None else None,
+            "ambulance_id": str(ambulance_id) if ambulance_id else None,
+            "hospital_id": str(hospital_id) if hospital_id else None,
+            "status": str(status),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self._enqueue(payload)
+
+    def record_mci_resolved(
+        self,
+        run_id: int,
+        mci_id: str,
+        resolved_sim_time: int,
+    ):
+        """Enqueue parent MCI resolution event."""
+        payload = {
+            "type": "MCI_RESOLVED",
+            "run_id": int(run_id),
+            "mci_id": str(mci_id),
+            "resolved_sim_time": int(resolved_sim_time),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self._enqueue(payload)
+
     def _enqueue(self, payload: Dict[str, Any]):
         """Place an immutable event into the thread-safe queue."""
         try:
@@ -438,6 +554,70 @@ class PersistenceBridge:
                     p["run_id"], p["event_type"], p["sim_time"],
                     p["facility_or_unit_id"], p["message"], p["created_at"],
                 ),
+            )
+
+        elif p_type == "REPOSITION_START":
+            conn.execute(
+                """
+                INSERT INTO historical_repositions (
+                    run_id, ambulance_id, origin_zone, target_zone,
+                    origin_lat, origin_lon, target_lat, target_lon,
+                    started_sim_time, reason, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'EN_ROUTE', ?)
+                """,
+                (
+                    p["run_id"], p["ambulance_id"], p["origin_zone"], p["target_zone"],
+                    p["origin_lat"], p["origin_lon"], p["target_lat"], p["target_lon"],
+                    p["started_sim_time"], p["reason"], p["created_at"],
+                ),
+            )
+
+        elif p_type == "REPOSITION_COMPLETE":
+            conn.execute(
+                """
+                UPDATE historical_repositions
+                SET status = ?, completed_sim_time = ?
+                WHERE run_id = ? AND ambulance_id = ? AND status = 'EN_ROUTE'
+                """,
+                (p["final_status"], p["completed_sim_time"], p["run_id"], p["ambulance_id"]),
+            )
+
+        elif p_type == "MCI_DECLARED":
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO historical_mci_events (
+                    run_id, mci_id, name, latitude, longitude,
+                    declared_sim_time, status, total_casualties, notes, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'DECLARED', ?, ?, ?)
+                """,
+                (
+                    p["run_id"], p["mci_id"], p["name"], p["latitude"], p["longitude"],
+                    p["declared_sim_time"], p["total_casualties"], p["notes"], p["created_at"],
+                ),
+            )
+
+        elif p_type == "MCI_CHILD":
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO historical_mci_children (
+                    run_id, mci_id, incident_id, severity, priority,
+                    ambulance_id, hospital_id, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    p["run_id"], p["mci_id"], p["incident_id"], p["severity"], p["priority"],
+                    p["ambulance_id"], p["hospital_id"], p["status"], p["created_at"],
+                ),
+            )
+
+        elif p_type == "MCI_RESOLVED":
+            conn.execute(
+                """
+                UPDATE historical_mci_events
+                SET status = 'RESOLVED', resolved_sim_time = ?
+                WHERE run_id = ? AND mci_id = ?
+                """,
+                (p["resolved_sim_time"], p["run_id"], p["mci_id"]),
             )
 
 

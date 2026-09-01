@@ -1,0 +1,92 @@
+{
+  "scenario_id": "DRILL_DUAL_MCI_55_16",
+  "run_id": "drill_DRILL_DUAL_MCI_55_16_1788273984516",
+  "drill_name": "DUAL_MCI_EARTHQUAKE",
+  "seed": 55,
+  "casualty_count": 16,
+  "total_simulation_minutes": 6,
+  "incidents_created": 16,
+  "incidents_dispatched": 16,
+  "incidents_waiting": 0,
+  "incidents_arrived": 16,
+  "ambulance_utilization": 0.8,
+  "hospital_saturation_events": 3,
+  "icu_saturation_events": 18,
+  "max_concurrent_en_route": 8,
+  "max_concurrent_mci": 2,
+  "average_response_eta": 1.78,
+  "average_transport_eta": 1.78,
+  "unresolved_incidents": 0,
+  "unresolved_mcis": 0,
+  "simulation_runtime_ms": 606.81,
+  "deterministic_hash": "865967ce3d58fa7528ea1a8b",
+  "metrics": {
+    "fleet_metrics": {
+      "total_ambulances": 1000,
+      "peak_en_route": 8,
+      "peak_repositioning": 0,
+      "utilization_ratio_pct": 0.8,
+      "dispatch_success_ratio_pct": 100.0,
+      "waiting_for_ambulance_count": 0,
+      "average_dispatch_eta_minutes": 1.78
+    },
+    "incident_metrics": {
+      "total_casualties": 16,
+      "dispatched_casualties": 16,
+      "waiting_casualties": 0,
+      "arrived_casualties": 16,
+      "unresolved_casualties": 0,
+      "average_transport_eta": 1.78,
+      "max_transport_eta": 2.28
+    },
+    "hospital_metrics": {
+      "hospitals_used_count": 16,
+      "peak_projected_utilization": 1.0,
+      "hospitals_reaching_full_count": 3,
+      "hospitals_reaching_icu_full_count": 18,
+      "hospital_load_distribution": {
+        "HOSP_263": 2,
+        "HOSP_009": 2,
+        "HOSP_064": 2,
+        "HOSP_136": 2,
+        "HOSP_247": 2,
+        "HOSP_271": 2,
+        "HOSP_084": 2,
+        "HOSP_149": 2,
+        "HOSP_296": 2,
+        "HOSP_080": 2,
+        "HOSP_156": 2,
+        "HOSP_232": 2,
+        "HOSP_099": 2,
+        "HOSP_270": 2,
+        "HOSP_210": 2,
+        "HOSP_092": 2
+      },
+      "max_simultaneous_incoming_reservations": 8
+    },
+    "mci_metrics": {
+      "total_mcis": 2,
+      "peak_concurrent_mcis": 2,
+      "unresolved_mci_casualties": 0
+    },
+    "resilience_score": {
+      "overall": 90.62,
+      "fleet_score": 100.0,
+      "dispatch_score": 100.0,
+      "hospital_score": 90.62,
+      "evacuation_score": 100.0,
+      "saturation_penalty": 15.0,
+      "unresolved_penalty": 0.0
+    }
+  },
+  "resilience_score": {
+    "overall": 90.62,
+    "fleet_score": 100.0,
+    "dispatch_score": 100.0,
+    "hospital_score": 90.62,
+    "evacuation_score": 100.0,
+    "saturation_penalty": 15.0,
+    "unresolved_penalty": 0.0
+  },
+  "created_at": "2026-09-01T14:46:25.123550+00:00"
+}

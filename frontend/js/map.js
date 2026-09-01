@@ -44,6 +44,7 @@ class TacticalMap {
     this.hospitalsLayer = L.layerGroup().addTo(this.map);
     this.routePolylinesLayer = L.layerGroup().addTo(this.map);
     this.enRouteAmbulancesLayer = L.layerGroup().addTo(this.map);
+    this.mciLayer = L.layerGroup().addTo(this.map);
 
     // Subscribe to state changes
     store.subscribe((state, changedKeys) => {
@@ -224,6 +225,69 @@ class TacticalMap {
         this.routePolylinesLayer.addLayer(routeLine);
       }
     }
+
+    // --- TIER 4: REPOSITIONING AMBULANCES (M9) ---
+    if (state.ambulances) {
+      const ambs = state.ambulances instanceof Map ? state.ambulances.values() : Object.values(state.ambulances);
+      for (const ambulance of ambs) {
+        if (ambulance.status === 'REPOSITIONING' || ambulance.is_repositioning) {
+          const repoColor = '#06b6d4'; // Tactical Cyan
+
+          // Repositioning Vehicle Pin
+          const icon = L.divIcon({
+            className: 'custom-amb-icon',
+            html: `
+              <div class="ambulance-marker-pin" style="background: ${repoColor}; box-shadow: 0 0 10px rgba(6, 182, 212, 0.6);">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="M4 14l6-6 6 6"/>
+                  <path d="M10 8v12"/>
+                </svg>
+              </div>
+            `,
+            iconSize: [26, 26],
+            iconAnchor: [13, 13],
+          });
+
+          const ambMarker = L.marker([ambulance.latitude, ambulance.longitude], { icon });
+          const etaText = ambulance.eta_minutes !== null ? `${ambulance.eta_minutes.toFixed(1)} min` : 'Transit';
+
+          ambMarker.bindPopup(`
+            <div style="font-family: var(--font-sans); min-width: 180px;">
+              <div style="font-weight: 800; font-size: 13px; color: ${repoColor};">
+                ${ambulance.ambulance_id} [REPOSITIONING]
+              </div>
+              <div style="font-size: 11px; margin-top: 4px; font-family: var(--font-mono); color: #cbd5e1;">
+                <div>Origin: <strong>${ambulance.reposition_origin_zone || 'Current'}</strong></div>
+                <div>Target: <strong>${ambulance.reposition_target_zone || 'Staging'}</strong></div>
+                <div>ETA: <strong style="color: ${repoColor};">${etaText}</strong></div>
+              </div>
+            </div>
+          `);
+
+          ambMarker.bindTooltip(`${ambulance.ambulance_id} | ${etaText}`, {
+            permanent: true,
+            direction: 'top',
+            offset: [0, -14],
+            className: 'amb-tooltip',
+          });
+
+          this.activeAmbulanceMarkers.set(ambulance.ambulance_id, ambMarker);
+          this.enRouteAmbulancesLayer.addLayer(ambMarker);
+
+          // Repositioning Route Polyline
+          if (ambulance.route_waypoints && ambulance.route_waypoints.length > 1) {
+            const routeLine = L.polyline(ambulance.route_waypoints, {
+              color: repoColor,
+              weight: 3,
+              dashArray: '4, 6',
+              opacity: 0.85,
+            });
+            this.routeLines.set(`repo_${ambulance.ambulance_id}`, routeLine);
+            this.routePolylinesLayer.addLayer(routeLine);
+          }
+        }
+      }
+    }
   }
 
   focusIncident(incidentId) {
@@ -231,6 +295,66 @@ class TacticalMap {
     if (route) {
       this.map.fitBounds(route.getBounds(), { padding: [40, 40] });
     }
+  }
+
+  // --- TIER 4: MULTI-CASUALTY INCIDENTS (M9 Phase 4) ---
+  renderMCIs(mcisList) {
+    if (!this.mciLayer) return;
+    this.mciLayer.clearLayers();
+
+    if (!mcisList || mcisList.length === 0) return;
+
+    for (const mci of mcisList) {
+      if (mci.status === 'RESOLVED') continue;
+
+      const isEvacuating = mci.status === 'EVACUATING';
+      const statusColor = isEvacuating ? '#f59e0b' : '#ef4444';
+
+      const icon = L.divIcon({
+        className: 'custom-mci-icon',
+        html: `
+          <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
+            <div style="position: absolute; inset: 0; border-radius: 50%; background: rgba(239, 68, 68, 0.4); animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+            <div style="width: 26px; height: 26px; border-radius: 50%; background: #dc2626; border: 2px solid #fecaca; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 12px rgba(239, 68, 68, 0.8);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3">
+                <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+          </div>
+        `,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+      });
+
+      const marker = L.marker([mci.latitude, mci.longitude], { icon });
+
+      const pCounts = mci.casualty_counts_by_priority || {};
+      const pSummary = Object.entries(pCounts).map(([k, v]) => `${k}:${v}`).join(' | ') || 'Pending';
+
+      marker.bindPopup(`
+        <div style="font-family: var(--font-sans); min-width: 200px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-weight: 800; font-size: 13px; color: #f87171;">${mci.name}</span>
+            <span style="font-size: 10px; background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 1px 4px; border-radius: 3px; border: 1px solid #ef4444;">${mci.status}</span>
+          </div>
+          <div style="font-size: 11px; margin-top: 6px; font-family: var(--font-mono); color: #cbd5e1; line-height: 1.5;">
+            <div>MCI ID: <strong style="color: #fff;">${mci.mci_id}</strong></div>
+            <div>Total Casualties: <strong style="color: #f87171;">${mci.total_casualties}</strong></div>
+            <div>Evacuated: <strong>${mci.evacuated_count} / ${mci.total_casualties}</strong></div>
+            <div>Priority Breakdown: <strong style="color: #38bdf8;">${pSummary}</strong></div>
+            <div>Assigned Fleet: <strong>${(mci.assigned_ambulance_ids || []).length} units</strong></div>
+          </div>
+        </div>
+      `);
+
+      this.mciLayer.addLayer(marker);
+    }
+  }
+
+  focusMCI(mciId) {
+    // Zoom in on MCI coordinates
   }
 }
 

@@ -1,6 +1,7 @@
 from pathlib import Path
 from math import radians, sin, cos, atan2, sqrt
 import sys
+from typing import Optional, List, Dict, Any, Tuple, Set
 
 import pandas as pd
 
@@ -68,6 +69,7 @@ from state import (
 from decision_logger import DecisionLogger
 from simulation_output import SimulationOutput
 from routing import routing_engine
+from coordination import FleetCoordinator
 
 
 # ==============================================================
@@ -98,6 +100,15 @@ class Simulator:
         self.active_routes = {}
 
         # ------------------------------------------------------
+        # FLEET COORDINATION & BALANCING (M9)
+        # ------------------------------------------------------
+
+        self.coordinator = FleetCoordinator()
+        self.repositioning_data = {}
+        self._last_coordination_time = 0
+        self.reposition_recommendations = []
+
+        # ------------------------------------------------------
         # DATASETS
         # ------------------------------------------------------
 
@@ -120,6 +131,7 @@ class Simulator:
         self.redirect_history = {}
         self.last_known_eta = {}
         self.eta_recheck_required = set()
+        self.mci_counter = 1
 
         # ------------------------------------------------------
         # HISTORICAL PERSISTENCE HOOKS (OPTIONAL)
@@ -134,6 +146,11 @@ class Simulator:
 
         self.load_state()
         self.register_event_handlers()
+
+    @property
+    def sim_time(self) -> int:
+        """Convenience property for current simulation clock."""
+        return int(self.state.current_time)
 
     def _record_persistence(self, callback_name, *args, **kwargs):
         """Invoke persistence hook safely if persistence_bridge is active."""
@@ -150,6 +167,12 @@ class Simulator:
     # ==========================================================
 
     def load_state(self):
+
+        if hasattr(self, "coordinator"):
+            if hasattr(self.coordinator, "hospital_balancer"):
+                self.coordinator.hospital_balancer.clear()
+            if hasattr(self.coordinator, "mci_manager"):
+                self.coordinator.mci_manager.clear()
 
         for _, row in self.ambulances.iterrows():
 
@@ -328,16 +351,23 @@ class Simulator:
             if amb.status == "AVAILABLE"
         }
 
+        # Derive live operational constraints from authoritative DispatchState and HospitalBalancer
+        projections = self.coordinator.get_hospital_projections(self.state.hospitals)
+
         suitable_hospital_ids = {
             hosp.hospital_id
             for hosp in self.state.hospitals.values()
-            if not hosp.is_full and hosp.available_beds > 0
+            if not hosp.is_full
+            and hosp.available_beds > 0
+            and projections.get(hosp.hospital_id, {}).get("projected_available_beds", 0) > 0
         }
 
         live_icu_hospital_ids = {
             hosp.hospital_id
             for hosp in self.state.hospitals.values()
-            if not hosp.is_full and hosp.available_icu > 0
+            if not hosp.is_full
+            and hosp.available_icu > 0
+            and projections.get(hosp.hospital_id, {}).get("projected_available_icu", 0) > 0
         }
 
         result = dispatch_incident(
@@ -425,6 +455,21 @@ class Simulator:
 
             if ambulance:
 
+                if getattr(ambulance, "is_repositioning", False) or ambulance.status == "REPOSITIONING":
+                    self.repositioning_data.pop(ambulance.ambulance_id, None)
+                    self.active_routes.pop(ambulance.ambulance_id, None)
+                    ambulance.is_repositioning = False
+                    ambulance.reposition_target = None
+                    ambulance.reposition_origin_zone = None
+                    ambulance.reposition_target_zone = None
+                    self.state.add_event(f"Ambulance {ambulance.ambulance_id} intercepted from repositioning for emergency incident {incident_id}.")
+                    self._record_persistence(
+                        "record_reposition_complete",
+                        ambulance_id=ambulance.ambulance_id,
+                        completed_sim_time=self.sim_time,
+                        final_status="INTERCEPTED",
+                    )
+
                 ambulance.status = "EN_ROUTE"
 
                 ambulance.incident_id = (
@@ -475,12 +520,20 @@ class Simulator:
 
         if hospital_data:
 
-            hospital_id = str(
-                hospital_data[
-                    "hospital_id"
-                ]
+            # Predictive hospital balancer refinement (M9 Phase 3)
+            balanced_hosp_id = self.coordinator.select_balanced_hospital(
+                hospitals=self.state.hospitals,
+                patient_lat=float(row["Patient_Lat"] if "Patient_Lat" in row else row["Latitude"]),
+                patient_lon=float(row["Patient_Lon"] if "Patient_Lon" in row else row["Longitude"]),
+                severity=severity,
+                condition=str(row["Condition"]),
+                routing_engine=self.routing_engine,
+                candidate_ids=suitable_hospital_ids,
             )
 
+            hospital_id = balanced_hosp_id if (balanced_hosp_id and balanced_hosp_id in self.state.hospitals) else str(hospital_data["hospital_id"])
+
+            hospital_data["hospital_id"] = hospital_id
             incident.hospital_id = (
                 hospital_id
             )
@@ -501,10 +554,26 @@ class Simulator:
                 hospital_id
             )
 
-            if hosp:
-                hosp.current_load += 1
-                if severity == "Critical":
-                    hosp.current_icu_load += 1
+            # Atomic in-flight reservation on dispatch (M9 Phase 3)
+            if ambulance:
+                self.coordinator.hospital_balancer.register_dispatch(
+                    ambulance_id=ambulance.ambulance_id,
+                    hospital_id=hospital_id,
+                    severity=severity,
+                    eta_minutes=float(ambulance.eta_minutes or 15.0),
+                    sim_time=self.sim_time,
+                )
+                self._record_persistence(
+                    "record_simulation_event",
+                    sim_time=self.sim_time,
+                    event_type="HOSPITAL_RESERVATION",
+                    data={
+                        "ambulance_id": ambulance.ambulance_id,
+                        "hospital_id": hospital_id,
+                        "severity": severity,
+                        "incident_id": incident_id,
+                    },
+                )
 
             if hosp and ambulance:
                 route = self.routing_engine.generate_route(
@@ -644,7 +713,8 @@ class Simulator:
         available_ambs = [
             amb
             for amb in self.state.ambulances.values()
-            if amb.status == "AVAILABLE"
+            if (amb.status == "AVAILABLE" or getattr(amb, "is_repositioning", False) or amb.status == "REPOSITIONING")
+            and amb.incident_id is None
         ]
 
         selected_amb = None
@@ -695,18 +765,24 @@ class Simulator:
             }
 
         # ------------------------------------------------------
-        # Select Hospital from live state
+        # Select Hospital from live state (with HospitalBalancer)
         # ------------------------------------------------------
+        projections = self.coordinator.get_hospital_projections(self.state.hospitals)
+
         suitable_hospital_ids = {
             h.hospital_id
             for h in self.state.hospitals.values()
-            if not h.is_full and h.available_beds > 0
+            if not h.is_full
+            and h.available_beds > 0
+            and projections.get(h.hospital_id, {}).get("projected_available_beds", 0) > 0
         }
 
         live_icu_hospital_ids = {
             h.hospital_id
             for h in self.state.hospitals.values()
-            if not h.is_full and h.available_icu > 0
+            if not h.is_full
+            and h.available_icu > 0
+            and projections.get(h.hospital_id, {}).get("projected_available_icu", 0) > 0
         }
 
         (
@@ -745,7 +821,18 @@ class Simulator:
                 "hospital": None,
             }
 
-        hospital_id = str(selected_hospital_row["Hospital_ID"])
+        # Predictive hospital balancer refinement (M9 Phase 3)
+        balanced_hosp_id = self.coordinator.select_balanced_hospital(
+            hospitals=self.state.hospitals,
+            patient_lat=patient_lat,
+            patient_lon=patient_lon,
+            severity=predicted_severity,
+            condition=str(custom_data["Condition"]),
+            routing_engine=self.routing_engine,
+            candidate_ids=suitable_hospital_ids,
+        )
+
+        hospital_id = balanced_hosp_id if (balanced_hosp_id and balanced_hosp_id in self.state.hospitals) else str(selected_hospital_row["Hospital_ID"])
 
         # ------------------------------------------------------
         # Mutate Authoritative Live State
@@ -761,6 +848,21 @@ class Simulator:
         )
         self.state.add_incident(incident)
 
+        if getattr(selected_amb, "is_repositioning", False) or selected_amb.status == "REPOSITIONING":
+            self.repositioning_data.pop(selected_amb.ambulance_id, None)
+            self.active_routes.pop(selected_amb.ambulance_id, None)
+            selected_amb.is_repositioning = False
+            selected_amb.reposition_target = None
+            selected_amb.reposition_origin_zone = None
+            selected_amb.reposition_target_zone = None
+            self.state.add_event(f"Ambulance {selected_amb.ambulance_id} intercepted from repositioning for emergency incident {incident_id}.")
+            self._record_persistence(
+                "record_reposition_complete",
+                ambulance_id=selected_amb.ambulance_id,
+                completed_sim_time=self.sim_time,
+                final_status="INTERCEPTED",
+            )
+
         selected_amb.status = "EN_ROUTE"
         selected_amb.incident_id = incident_id
         selected_amb.hospital_id = hospital_id
@@ -771,9 +873,25 @@ class Simulator:
 
         hosp_state = self.state.hospitals.get(hospital_id)
         if hosp_state:
-            hosp_state.current_load += 1
-            if predicted_severity == "Critical":
-                hosp_state.current_icu_load += 1
+            # Atomic in-flight reservation on dispatch (M9 Phase 3)
+            self.coordinator.hospital_balancer.register_dispatch(
+                ambulance_id=selected_amb.ambulance_id,
+                hospital_id=hospital_id,
+                severity=predicted_severity,
+                eta_minutes=float(selected_eta),
+                sim_time=self.sim_time,
+            )
+            self._record_persistence(
+                "record_simulation_event",
+                sim_time=self.sim_time,
+                event_type="HOSPITAL_RESERVATION",
+                data={
+                    "ambulance_id": selected_amb.ambulance_id,
+                    "hospital_id": hospital_id,
+                    "severity": predicted_severity,
+                    "incident_id": incident_id,
+                },
+            )
 
             route = self.routing_engine.generate_route(
                 origin=(float(selected_amb.latitude), float(selected_amb.longitude)),
@@ -841,6 +959,478 @@ class Simulator:
                 "available_icu": int(hosp_state.available_icu if hosp_state else selected_hospital_row["Available_ICU"]),
                 "suitability": int(selected_hospital_row["Suitability"]),
             },
+        }
+
+    # ==========================================================
+    # MULTI-CASUALTY INCIDENTS (MCI) (M9 Phase 4)
+    # ==========================================================
+
+    def _generate_mci_casualty_profile(
+        self,
+        index: int,
+        condition: str,
+        scene_lat: float,
+        scene_lon: float,
+    ) -> dict:
+        """
+        Generate a clinically realistic casualty profile for an MCI victim.
+        Provides a diverse spread of severities:
+          - Index 0: Critical (P1)
+          - Index 1: Emergency (P2)
+          - Index 2: Moderate (P3)
+          - Index 3: Low (P4)
+        """
+        tier = index % 4
+        lat_offset = ((index * 17) % 7 - 3) * 0.0003
+        lon_offset = ((index * 23) % 7 - 3) * 0.0003
+
+        if tier == 0:
+            return {
+                "Sex": "Male" if index % 2 == 0 else "Female",
+                "Age": 28 + (index * 7) % 45,
+                "Condition": str(condition),
+                "Arrival_Mode": "Ambulance",
+                "Injury_Type": "Severe" if condition == "Trauma" else "No Injury",
+                "Heart_Rate": 138.0,
+                "SpO2": 85.0,
+                "Systolic_BP": 78.0,
+                "Diastolic_BP": 48.0,
+                "Respiratory_Rate": 30.0,
+                "Temperature": 38.2,
+                "Consciousness": "Unconscious",
+                "Oxygen_Requirement": "Oxygen Mask",
+                "GCS": 7,
+                "Pain_Score": 9,
+                "Blood_Glucose": 185.0,
+                "Respiratory_Distress": 1,
+                "Chest_Pain": 1,
+                "Bleeding": 1,
+                "Seizure": 0,
+                "Diabetes": 0,
+                "Hypertension": 1,
+                "Heart_Disease": 1 if condition == "Cardiac" else 0,
+                "Respiratory_Disease": 1 if condition == "Respiratory" else 0,
+                "patient_lat": scene_lat + lat_offset,
+                "patient_lon": scene_lon + lon_offset,
+            }
+        elif tier == 1:
+            return {
+                "Sex": "Female" if index % 2 == 0 else "Male",
+                "Age": 32 + (index * 5) % 40,
+                "Condition": str(condition),
+                "Arrival_Mode": "Ambulance",
+                "Injury_Type": "Moderate" if condition == "Trauma" else "No Injury",
+                "Heart_Rate": 115.0,
+                "SpO2": 91.0,
+                "Systolic_BP": 105.0,
+                "Diastolic_BP": 68.0,
+                "Respiratory_Rate": 24.0,
+                "Temperature": 37.6,
+                "Consciousness": "Altered",
+                "Oxygen_Requirement": "Nasal Cannula",
+                "GCS": 12,
+                "Pain_Score": 7,
+                "Blood_Glucose": 140.0,
+                "Respiratory_Distress": 1,
+                "Chest_Pain": 1 if condition in ("Cardiac", "Trauma") else 0,
+                "Bleeding": 1 if condition == "Trauma" else 0,
+                "Seizure": 0,
+                "Diabetes": 0,
+                "Hypertension": 0,
+                "Heart_Disease": 0,
+                "Respiratory_Disease": 0,
+                "patient_lat": scene_lat + lat_offset,
+                "patient_lon": scene_lon + lon_offset,
+            }
+        elif tier == 2:
+            return {
+                "Sex": "Male" if index % 2 == 0 else "Female",
+                "Age": 22 + (index * 9) % 50,
+                "Condition": str(condition),
+                "Arrival_Mode": "Ambulance",
+                "Injury_Type": "Minor" if condition == "Trauma" else "No Injury",
+                "Heart_Rate": 98.0,
+                "SpO2": 95.0,
+                "Systolic_BP": 122.0,
+                "Diastolic_BP": 80.0,
+                "Respiratory_Rate": 18.0,
+                "Temperature": 37.0,
+                "Consciousness": "Alert",
+                "Oxygen_Requirement": "None",
+                "GCS": 15,
+                "Pain_Score": 5,
+                "Blood_Glucose": 110.0,
+                "Respiratory_Distress": 0,
+                "Chest_Pain": 0,
+                "Bleeding": 0,
+                "Seizure": 0,
+                "Diabetes": 0,
+                "Hypertension": 0,
+                "Heart_Disease": 0,
+                "Respiratory_Disease": 0,
+                "patient_lat": scene_lat + lat_offset,
+                "patient_lon": scene_lon + lon_offset,
+            }
+        else:
+            return {
+                "Sex": "Female" if index % 2 == 0 else "Male",
+                "Age": 20 + (index * 6) % 35,
+                "Condition": str(condition),
+                "Arrival_Mode": "Ambulance",
+                "Injury_Type": "Superficial" if condition == "Trauma" else "No Injury",
+                "Heart_Rate": 78.0,
+                "SpO2": 98.0,
+                "Systolic_BP": 120.0,
+                "Diastolic_BP": 78.0,
+                "Respiratory_Rate": 16.0,
+                "Temperature": 36.8,
+                "Consciousness": "Alert",
+                "Oxygen_Requirement": "None",
+                "GCS": 15,
+                "Pain_Score": 2,
+                "Blood_Glucose": 95.0,
+                "Respiratory_Distress": 0,
+                "Chest_Pain": 0,
+                "Bleeding": 0,
+                "Seizure": 0,
+                "Diabetes": 0,
+                "Hypertension": 0,
+                "Heart_Disease": 0,
+                "Respiratory_Disease": 0,
+                "patient_lat": scene_lat + lat_offset,
+                "patient_lon": scene_lon + lon_offset,
+            }
+
+    def declare_mci(
+        self,
+        mci_id: Optional[str] = None,
+        name: Optional[str] = "Multi-Casualty Incident",
+        latitude: float = 26.9124,
+        longitude: float = 75.7873,
+        estimated_casualties: int = 5,
+        primary_condition: str = "Trauma",
+        description: str = "",
+        notes: str = "",
+        casualties: Optional[List[dict]] = None,
+    ) -> dict:
+        """
+        Declare a Multi-Casualty Incident.
+        1. Creates parent MCIEvent in MCIManager (DECLARED).
+        2. Generates and triages child incidents individually with ML pipeline.
+        3. Prioritizes P1 -> P2 -> P3 -> P4 -> P5.
+        4. Atomically assigns candidate ambulances (excluding committed, intercepting repositioning).
+        5. Disperses casualties across balanced hospitals using HospitalBalancer and surge damping.
+        6. Registers in-flight reservations and transitions MCI to EVACUATING.
+        7. Persists records via M7 persistence bridge.
+        """
+        if not mci_id:
+            mci_id = f"MCI_{self.sim_time}_{self.mci_counter:03d}"
+            self.mci_counter += 1
+        else:
+            mci_id = str(mci_id)
+
+        mci = self.coordinator.mci_manager.create_mci(
+            mci_id=mci_id,
+            name=name or "Multi-Casualty Incident",
+            latitude=float(latitude),
+            longitude=float(longitude),
+            declared_sim_time=self.sim_time,
+            estimated_casualties=estimated_casualties,
+            description=description,
+            notes=notes,
+        )
+
+        self.state.add_event(
+            f"MCI DECLARED: {mci.name} ({mci_id}) at ({latitude:.4f}, {longitude:.4f}) with ~{estimated_casualties} casualties."
+        )
+
+        self._record_persistence(
+            "record_mci_declared",
+            mci_id=mci_id,
+            name=mci.name,
+            latitude=mci.latitude,
+            longitude=mci.longitude,
+            declared_sim_time=mci.declared_sim_time,
+            total_casualties=estimated_casualties,
+            notes=notes,
+        )
+
+        (
+            patients_df,
+            ambulances_df,
+            scenarios_df,
+            hospitals_df,
+            model,
+        ) = load_data()
+
+        feature_names = [
+            "Sex",
+            "Condition",
+            "Oxygen_Requirement",
+            "Consciousness",
+            "Injury_Type",
+            "Arrival_Mode",
+            "Age",
+            "Heart_Rate",
+            "SpO2",
+            "Systolic_BP",
+            "Diastolic_BP",
+            "Respiratory_Rate",
+            "Temperature",
+            "GCS",
+            "Pain_Score",
+            "Blood_Glucose",
+            "Respiratory_Distress",
+            "Chest_Pain",
+            "Bleeding",
+            "Seizure",
+            "Diabetes",
+            "Hypertension",
+            "Heart_Disease",
+            "Respiratory_Disease",
+        ]
+
+        if not hasattr(self, "_next_custom_id"):
+            self._next_custom_id = 100001
+
+        triaged_casualties = []
+        num_casualties = len(casualties) if casualties else max(1, estimated_casualties)
+
+        for idx in range(num_casualties):
+            incident_id = self._next_custom_id
+            self._next_custom_id += 1
+
+            if casualties and idx < len(casualties):
+                cas_data = dict(casualties[idx])
+                if "patient_lat" not in cas_data:
+                    cas_data["patient_lat"] = latitude
+                if "patient_lon" not in cas_data:
+                    cas_data["patient_lon"] = longitude
+            else:
+                cas_data = self._generate_mci_casualty_profile(idx, primary_condition, latitude, longitude)
+
+            # Individual ML triage
+            model_input = pd.DataFrame([{col: cas_data[col] for col in feature_names}])
+            predicted_severity, confidence, _ = predict_severity(model, model_input)
+            priority_number = SEVERITY_PRIORITY.get(predicted_severity, 5)
+
+            # Standard child IncidentState
+            incident = IncidentState(
+                incident_id=incident_id,
+                condition=str(cas_data["Condition"]),
+                severity=predicted_severity,
+                priority=priority_number,
+                status="PENDING_DISPATCH",
+                ambulance_id=None,
+                hospital_id=None,
+            )
+            self.state.add_incident(incident)
+
+            # Associate child with parent MCI (transitions to TRIAGED)
+            self.coordinator.mci_manager.attach_child_incident(
+                mci_id=mci_id,
+                incident_id=incident_id,
+                severity=predicted_severity,
+                priority=priority_number,
+            )
+
+            triaged_casualties.append({
+                "incident_id": incident_id,
+                "incident": incident,
+                "severity": predicted_severity,
+                "priority": priority_number,
+                "confidence": confidence,
+                "lat": float(cas_data["patient_lat"]),
+                "lon": float(cas_data["patient_lon"]),
+                "data": cas_data,
+            })
+
+        # Coordinated triage priority order: P1 -> P2 -> P3 -> P4 -> P5
+        triaged_casualties.sort(key=lambda x: x["priority"])
+
+        # Available fleet pool: AVAILABLE or REPOSITIONING (excluding committed)
+        available_pool = [
+            amb for amb in self.state.ambulances.values()
+            if (amb.status == "AVAILABLE" or getattr(amb, "is_repositioning", False) or amb.status == "REPOSITIONING")
+            and amb.incident_id is None
+        ]
+
+        child_summaries = []
+        dispatched_count = 0
+        waiting_count = 0
+
+        for cas in triaged_casualties:
+            inc = cas["incident"]
+            sev = cas["severity"]
+            pri = cas["priority"]
+            c_lat, c_lon = cas["lat"], cas["lon"]
+
+            if not available_pool:
+                inc.status = "WAITING_AMBULANCE"
+                waiting_count += 1
+                child_summaries.append({
+                    "incident_id": inc.incident_id,
+                    "severity": sev,
+                    "priority": pri,
+                    "status": "WAITING_AMBULANCE",
+                    "ambulance_id": None,
+                    "hospital_id": None,
+                    "eta_minutes": None,
+                })
+                continue
+
+            # Rank candidate ambulances
+            req_level = required_ambulance_level(sev)
+            scored_ambs = []
+            for amb in available_pool:
+                d = _distance_between(amb.latitude, amb.longitude, c_lat, c_lon)
+                eta = _estimate_eta_to_patient(amb, d)
+                cap_level = AMBULANCE_CAPABILITY.get(amb.ambulance_type, 1)
+                matches = cap_level >= req_level
+                scored_ambs.append((not matches, eta, d, amb))
+
+            scored_ambs.sort(key=lambda x: (x[0], x[1], x[2]))
+            selected_amb = scored_ambs[0][3]
+            selected_eta = scored_ambs[0][1]
+            selected_dist = scored_ambs[0][2]
+
+            # Remove from pool atomically (no double-booking)
+            available_pool.remove(selected_amb)
+
+            # Intercept repositioning if applicable
+            if getattr(selected_amb, "is_repositioning", False) or selected_amb.status == "REPOSITIONING":
+                self.repositioning_data.pop(selected_amb.ambulance_id, None)
+                self.active_routes.pop(selected_amb.ambulance_id, None)
+                selected_amb.is_repositioning = False
+                selected_amb.reposition_target = None
+                selected_amb.reposition_origin_zone = None
+                selected_amb.reposition_target_zone = None
+                self.state.add_event(
+                    f"Ambulance {selected_amb.ambulance_id} intercepted from repositioning for MCI casualty {inc.incident_id}."
+                )
+                self._record_persistence(
+                    "record_reposition_complete",
+                    ambulance_id=selected_amb.ambulance_id,
+                    completed_sim_time=self.sim_time,
+                    final_status="INTERCEPTED",
+                )
+
+            # Select balanced hospital with surge damping
+            projections = self.coordinator.get_hospital_projections(self.state.hospitals)
+            suitable_hospital_ids = {
+                hid for hid, p in projections.items()
+                if p["projected_available_beds"] > 0
+            }
+            if sev == "Critical":
+                suitable_hospital_ids = {
+                    hid for hid in suitable_hospital_ids
+                    if projections[hid]["projected_available_icu"] > 0
+                }
+
+            chosen_hosp_id = self.coordinator.select_balanced_hospital(
+                hospitals=self.state.hospitals,
+                patient_lat=c_lat,
+                patient_lon=c_lon,
+                severity=sev,
+                condition=inc.condition,
+                routing_engine=self.routing_engine,
+                candidate_ids=suitable_hospital_ids,
+                mci_surge_counts=mci.hospital_distribution,
+            )
+
+            if not chosen_hosp_id:
+                chosen_hosp_id = next(iter(self.state.hospitals.keys()))
+
+            # Mutate state
+            inc.status = "DISPATCHED"
+            inc.ambulance_id = selected_amb.ambulance_id
+            inc.hospital_id = chosen_hosp_id
+
+            selected_amb.status = "EN_ROUTE"
+            selected_amb.incident_id = inc.incident_id
+            selected_amb.hospital_id = chosen_hosp_id
+            selected_amb.base_eta_minutes = float(selected_eta)
+            selected_amb.eta_minutes = float(selected_eta)
+            selected_amb.route_distance_km = float(selected_dist)
+            self.last_known_eta[inc.incident_id] = float(selected_eta)
+            self.redirect_history[inc.incident_id] = set()
+
+            # M8 Route generation
+            target_hosp = self.state.hospitals[chosen_hosp_id]
+            route = self.routing_engine.generate_route(
+                origin=(float(selected_amb.latitude), float(selected_amb.longitude)),
+                destination=(float(target_hosp.latitude), float(target_hosp.longitude)),
+                vehicle_type=str(selected_amb.ambulance_type),
+                traffic_level=str(getattr(selected_amb, "traffic_level", "NORMAL")),
+                road_condition=str(getattr(selected_amb, "road_condition", "GOOD")),
+            )
+            self.active_routes[selected_amb.ambulance_id] = route
+            selected_amb.route_waypoints = [list(wp) for wp in route.waypoints]
+            selected_amb.routing_engine = route.routing_engine
+
+            # Register in-flight reservation in HospitalBalancer
+            self.coordinator.hospital_balancer.register_dispatch(
+                ambulance_id=selected_amb.ambulance_id,
+                hospital_id=chosen_hosp_id,
+                severity=sev,
+                eta_minutes=float(selected_eta),
+                sim_time=self.sim_time,
+            )
+
+            # Record in parent MCI
+            self.coordinator.mci_manager.record_assignment(
+                mci_id=mci_id,
+                ambulance_id=selected_amb.ambulance_id,
+                hospital_id=chosen_hosp_id,
+            )
+
+            # Persistence
+            self._record_persistence(
+                "record_mci_child",
+                mci_id=mci_id,
+                incident_id=inc.incident_id,
+                severity=sev,
+                priority=pri,
+                ambulance_id=selected_amb.ambulance_id,
+                hospital_id=chosen_hosp_id,
+                status="DISPATCHED",
+            )
+            self._record_persistence(
+                "record_dispatch",
+                incident_id=inc.incident_id,
+                source="MCI_COORDINATED",
+                condition=inc.condition,
+                predicted_severity=sev,
+                priority=pri,
+                ml_confidence=cas.get("confidence"),
+                patient_lat=c_lat,
+                patient_lon=c_lon,
+                dispatched_sim_time=self.sim_time,
+                ambulance_id=selected_amb.ambulance_id,
+                ambulance_type=selected_amb.ambulance_type,
+                hospital_id=chosen_hosp_id,
+                initial_eta_minutes=float(selected_eta),
+                route_distance_km=float(selected_dist),
+                traffic_level=getattr(selected_amb, "traffic_level", "NORMAL"),
+                road_condition=getattr(selected_amb, "road_condition", "GOOD"),
+            )
+
+            dispatched_count += 1
+            child_summaries.append({
+                "incident_id": inc.incident_id,
+                "severity": sev,
+                "priority": pri,
+                "status": "DISPATCHED",
+                "ambulance_id": selected_amb.ambulance_id,
+                "hospital_id": chosen_hosp_id,
+                "eta_minutes": float(selected_eta),
+            })
+
+        return {
+            "mci": mci.to_dict(),
+            "child_incidents": child_summaries,
+            "dispatched_count": dispatched_count,
+            "waiting_count": waiting_count,
         }
 
     # ==========================================================
@@ -1107,6 +1697,158 @@ class Simulator:
         )
 
     # ==========================================================
+    # FLEET REPOSITIONING (M9)
+    # ==========================================================
+
+    def execute_reposition(
+        self,
+        ambulance_id: str,
+        target_lat: float,
+        target_lon: float,
+        reason: str = "COVERAGE_DEFICIT",
+    ) -> dict:
+        """
+        Initiate an idle ambulance repositioning movement toward target coordinates.
+        """
+        amb_id = str(ambulance_id)
+        ambulance = self.state.ambulances.get(amb_id)
+        if not ambulance:
+            raise KeyError(f"Ambulance '{amb_id}' not found.")
+
+        # Status guards
+        status = str(ambulance.status).upper()
+        if status != "AVAILABLE" or getattr(ambulance, "is_repositioning", False):
+            raise ValueError(
+                f"Ambulance '{amb_id}' is not AVAILABLE for repositioning (status={ambulance.status})."
+            )
+
+        if ambulance.incident_id is not None:
+            raise ValueError(f"Ambulance '{amb_id}' is currently assigned to incident {ambulance.incident_id}.")
+
+        # Coordinate bounds validation
+        t_lat = float(target_lat)
+        t_lon = float(target_lon)
+        if not (-90.0 <= t_lat <= 90.0 and -180.0 <= t_lon <= 180.0):
+            raise ValueError(f"Invalid target coordinates: ({t_lat}, {t_lon}).")
+
+        # Determine origin and target zones
+        origin_zone = self.coordinator.coverage_engine.assign_zone(float(ambulance.latitude), float(ambulance.longitude))
+        target_zone = self.coordinator.coverage_engine.assign_zone(t_lat, t_lon)
+
+        # Coverage protection: source zone must not be left critically defenseless
+        coverage = self.coordinator.coverage_engine.evaluate_coverage(self.state.ambulances)
+        origin_metrics = coverage.get(origin_zone)
+        if origin_metrics and origin_metrics.status == "DEFICIT" and len(origin_metrics.available_ambulances) <= 1:
+            raise ValueError(
+                f"Source zone '{origin_zone}' is in DEFICIT with {len(origin_metrics.available_ambulances)} available unit(s); cannot reposition its last unit."
+            )
+
+        # Generate M8 route from CURRENT coordinates
+        route = self.routing_engine.generate_route(
+            origin=(float(ambulance.latitude), float(ambulance.longitude)),
+            destination=(t_lat, t_lon),
+            vehicle_type=str(ambulance.ambulance_type),
+            traffic_level=str(getattr(ambulance, "traffic_level", "NORMAL")),
+            road_condition=str(getattr(ambulance, "road_condition", "GOOD")),
+        )
+        route.route_type = "REPOSITIONING"
+
+        self.active_routes[amb_id] = route
+        self.repositioning_data[amb_id] = {
+            "is_repositioning": True,
+            "reposition_target": (t_lat, t_lon),
+            "reposition_origin_zone": origin_zone,
+            "reposition_target_zone": target_zone,
+            "reposition_started_sim_time": self.sim_time,
+            "reason": reason,
+        }
+
+        # Update ambulance state
+        ambulance.status = "REPOSITIONING"
+        ambulance.is_repositioning = True
+        ambulance.reposition_target = [t_lat, t_lon]
+        ambulance.reposition_origin_zone = origin_zone
+        ambulance.reposition_target_zone = target_zone
+        ambulance.route_distance_km = route.route_distance_km
+        ambulance.route_waypoints = [list(wp) for wp in route.waypoints]
+        ambulance.eta_minutes = route.initial_eta_minutes
+        ambulance.base_eta_minutes = route.initial_eta_minutes
+        ambulance.routing_engine = route.routing_engine
+
+        self.state.add_event(
+            f"Ambulance {amb_id} started repositioning {origin_zone} -> {target_zone} (ETA: {route.initial_eta_minutes}m)."
+        )
+
+        # Asynchronous historical persistence
+        self._record_persistence(
+            "record_reposition_start",
+            ambulance_id=amb_id,
+            origin_zone=origin_zone,
+            target_zone=target_zone,
+            origin_lat=float(route.origin[0]),
+            origin_lon=float(route.origin[1]),
+            target_lat=t_lat,
+            target_lon=t_lon,
+            started_sim_time=self.sim_time,
+            reason=reason,
+        )
+
+        return {
+            "status": "REPOSITIONING",
+            "ambulance_id": amb_id,
+            "origin_zone": origin_zone,
+            "target_zone": target_zone,
+            "target_coords": [t_lat, t_lon],
+            "route_distance_km": route.route_distance_km,
+            "eta_minutes": route.initial_eta_minutes,
+            "route_waypoints": [list(wp) for wp in route.waypoints],
+        }
+
+    def cancel_reposition(
+        self,
+        ambulance_id: str,
+        reason: str = "CANCELLED_BY_OPERATOR",
+    ) -> dict:
+        """
+        Cancel an active repositioning movement and return ambulance to AVAILABLE at current position.
+        """
+        amb_id = str(ambulance_id)
+        ambulance = self.state.ambulances.get(amb_id)
+        if not ambulance:
+            raise KeyError(f"Ambulance '{amb_id}' not found.")
+
+        if not (getattr(ambulance, "is_repositioning", False) or ambulance.status == "REPOSITIONING"):
+            raise ValueError(f"Ambulance '{amb_id}' is not currently repositioning.")
+
+        self.active_routes.pop(amb_id, None)
+        self.repositioning_data.pop(amb_id, None)
+
+        ambulance.status = "AVAILABLE"
+        ambulance.is_repositioning = False
+        ambulance.reposition_target = None
+        ambulance.reposition_origin_zone = None
+        ambulance.reposition_target_zone = None
+        ambulance.route_distance_km = None
+        ambulance.route_waypoints = []
+        ambulance.eta_minutes = None
+        ambulance.base_eta_minutes = None
+
+        self.state.add_event(f"Ambulance {amb_id} repositioning cancelled: {reason}.")
+
+        self._record_persistence(
+            "record_reposition_complete",
+            ambulance_id=amb_id,
+            completed_sim_time=self.sim_time,
+            final_status="CANCELLED",
+        )
+
+        return {
+            "status": "AVAILABLE",
+            "ambulance_id": amb_id,
+            "message": f"Repositioning cancelled: {reason}.",
+        }
+
+    # ==========================================================
     # ADVANCE TIME
     # ==============================================================
 
@@ -1127,6 +1869,57 @@ class Simulator:
         for ambulance in (
             self.state.ambulances.values()
         ):
+
+            if ambulance.status == "REPOSITIONING":
+                # M9 Kinematics: Advance repositioning ambulance along route waypoints
+                route = self.active_routes.get(ambulance.ambulance_id)
+                if route is not None:
+                    route.elapsed_minutes += minutes
+                    new_lat, new_lon = self.routing_engine.interpolate_position(
+                        route,
+                        route.elapsed_minutes,
+                    )
+                    ambulance.latitude = new_lat
+                    ambulance.longitude = new_lon
+
+                    total_dur = max(0.001, route.total_duration_minutes)
+                    progress_ratio = min(1.0, max(0.0, route.elapsed_minutes / total_dur))
+                    if len(route.waypoints) > 1:
+                        idx = min(len(route.waypoints) - 2, int(progress_ratio * (len(route.waypoints) - 1)))
+                        ambulance.route_waypoints = [[new_lat, new_lon]] + [list(wp) for wp in route.waypoints[idx + 1:]]
+
+                ambulance.eta_minutes = max(
+                    0,
+                    (ambulance.eta_minutes or 0) - minutes,
+                )
+
+                if ambulance.eta_minutes <= 0 or (route and route.elapsed_minutes >= route.total_duration_minutes):
+                    ambulance.eta_minutes = None
+                    ambulance.base_eta_minutes = None
+                    ambulance.status = "AVAILABLE"
+                    ambulance.is_repositioning = False
+                    if route is not None:
+                        ambulance.latitude = float(route.destination[0])
+                        ambulance.longitude = float(route.destination[1])
+                    ambulance.route_waypoints = []
+                    ambulance.route_distance_km = None
+                    ambulance.reposition_target = None
+                    ambulance.reposition_origin_zone = None
+                    ambulance.reposition_target_zone = None
+                    self.active_routes.pop(ambulance.ambulance_id, None)
+                    rep_info = self.repositioning_data.pop(ambulance.ambulance_id, {})
+
+                    self.state.add_event(
+                        f"Ambulance {ambulance.ambulance_id} arrived at staging post ({rep_info.get('reposition_target_zone', 'target')})."
+                    )
+
+                    self._record_persistence(
+                        "record_reposition_complete",
+                        ambulance_id=ambulance.ambulance_id,
+                        completed_sim_time=self.sim_time,
+                        final_status="COMPLETED",
+                    )
+                continue
 
             if ambulance.status != "EN_ROUTE":
                 continue
@@ -1175,6 +1968,17 @@ class Simulator:
                     )
                 )
 
+                # Conversion of reservation into actual hospital load on arrival (M9 Phase 3)
+                if ambulance.hospital_id:
+                    self.coordinator.hospital_balancer.register_arrival(
+                        ambulance.ambulance_id,
+                        ambulance.hospital_id,
+                    )
+                    if target_hosp is not None:
+                        target_hosp.current_load = min(target_hosp.capacity, target_hosp.current_load + 1)
+                        if incident and str(getattr(incident, "severity", "")).strip().lower() == "critical":
+                            target_hosp.current_icu_load = min(target_hosp.icu_capacity, target_hosp.current_icu_load + 1)
+
                 if incident:
 
                     incident.status = "ARRIVED"
@@ -1203,6 +2007,29 @@ class Simulator:
                 self.last_known_eta[
                     ambulance.incident_id
                 ] = ambulance.eta_minutes
+
+        # Periodic coordination maintenance (every 5 simulation minutes)
+        if self.sim_time - self._last_coordination_time >= 5:
+            self._last_coordination_time = self.sim_time
+            self.reposition_recommendations = self.coordinator.get_reposition_recommendations(self.state.ambulances)
+
+        # Check active MCIs for progress and resolution (M9 Phase 4)
+        if hasattr(self, "coordinator") and hasattr(self.coordinator, "mci_manager"):
+            for mci in self.coordinator.mci_manager.list_active_mcis():
+                evacuated, is_resolved = self.coordinator.mci_manager.check_mci_progress(
+                    mci_id=mci.mci_id,
+                    incidents=self.state.incidents,
+                    sim_time=self.sim_time,
+                )
+                if is_resolved:
+                    self._record_persistence(
+                        "record_mci_resolved",
+                        mci_id=mci.mci_id,
+                        resolved_sim_time=self.sim_time,
+                    )
+                    self.state.add_event(
+                        f"MCI {mci.mci_id} ({mci.name}) EVACUATION COMPLETE — RESOLVED."
+                    )
 
     # ==========================================================
     # ETA RECHECK
@@ -1633,6 +2460,16 @@ class Simulator:
             new_hospital_id
         )
 
+        # Atomic reservation transfer (M9 Phase 3)
+        self.coordinator.hospital_balancer.update_redirection(
+            ambulance_id=ambulance.ambulance_id,
+            old_hospital_id=current_hospital_id,
+            new_hospital_id=new_hospital_id,
+            severity=str(incident.severity),
+            new_eta_minutes=float(eta_after),
+            sim_time=self.sim_time,
+        )
+
         # M8 Kinematics: Generate new route from current position to new hospital
         new_route = self.routing_engine.generate_route(
             origin=(float(ambulance.latitude), float(ambulance.longitude)),
@@ -1831,15 +2668,15 @@ class Simulator:
         eta_saved = round(float(eta_before) - float(eta_after), 2)
         eta_improvement_pct = round((eta_saved / float(eta_before) * 100.0), 2) if (eta_before and float(eta_before) > 0) else 0.0
 
-        # Mutate Hospital Loads: decrement old hospital load, increment new hospital load
-        if current_hospital and current_hospital.current_load > 0:
-            current_hospital.current_load -= 1
-            if incident.severity == "Critical" and current_hospital.current_icu_load > 0:
-                current_hospital.current_icu_load -= 1
-
-        new_hospital.current_load += 1
-        if incident.severity == "Critical":
-            new_hospital.current_icu_load += 1
+        # Atomic reservation transfer (M9 Phase 3)
+        self.coordinator.hospital_balancer.update_redirection(
+            ambulance_id=ambulance.ambulance_id,
+            old_hospital_id=current_hospital_id,
+            new_hospital_id=new_hospital_id,
+            severity=str(incident.severity),
+            new_eta_minutes=float(eta_after),
+            sim_time=self.sim_time,
+        )
 
         # Mutate Incident & Ambulance
         history = self.redirect_history.setdefault(incident_id, set())

@@ -1,0 +1,19 @@
+{
+  "mode": "GUARDED",
+  "min_confidence_reposition": 0.95,
+  "min_confidence_diversion": 0.99,
+  "min_action_interval_seconds": 15.0,
+  "zone_cooldown_ticks": 3,
+  "max_autonomous_actions_per_window": 5,
+  "window_size_ticks": 10,
+  "max_consecutive_autonomous_actions": 3,
+  "fleet_safety_floor": 2,
+  "allow_full_mode": false,
+  "kill_switch_active": false,
+  "version": "1.4.0",
+  "policy_version": "v4",
+  "created_at": "2026-09-01T16:36:07.836105+00:00",
+  "parent_version": "v1",
+  "change_reason": "API rollback test",
+  "approved_by": "OP_TEST"
+}

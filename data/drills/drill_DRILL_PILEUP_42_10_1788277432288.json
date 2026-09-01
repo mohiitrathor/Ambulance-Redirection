@@ -1,0 +1,87 @@
+{
+  "scenario_id": "DRILL_PILEUP_42_10",
+  "run_id": "drill_DRILL_PILEUP_42_10_1788277432288",
+  "drill_name": "NH48_MULTI_VEHICLE_PILEUP",
+  "seed": 42,
+  "casualty_count": 10,
+  "total_simulation_minutes": 5,
+  "incidents_created": 11,
+  "incidents_dispatched": 11,
+  "incidents_waiting": 0,
+  "incidents_arrived": 8,
+  "ambulance_utilization": 0.9,
+  "hospital_saturation_events": 3,
+  "icu_saturation_events": 18,
+  "max_concurrent_en_route": 9,
+  "max_concurrent_mci": 1,
+  "average_response_eta": 5.28,
+  "average_transport_eta": 5.28,
+  "unresolved_incidents": 3,
+  "unresolved_mcis": 3,
+  "simulation_runtime_ms": 2150.93,
+  "deterministic_hash": "30daa21d96b4f6b1b7ec2119",
+  "metrics": {
+    "fleet_metrics": {
+      "total_ambulances": 1000,
+      "peak_en_route": 9,
+      "peak_repositioning": 1,
+      "utilization_ratio_pct": 0.9,
+      "dispatch_success_ratio_pct": 100.0,
+      "waiting_for_ambulance_count": 0,
+      "average_dispatch_eta_minutes": 5.28
+    },
+    "incident_metrics": {
+      "total_casualties": 11,
+      "dispatched_casualties": 11,
+      "waiting_casualties": 0,
+      "arrived_casualties": 8,
+      "unresolved_casualties": 3,
+      "average_transport_eta": 5.28,
+      "max_transport_eta": 34.52
+    },
+    "hospital_metrics": {
+      "hospitals_used_count": 11,
+      "peak_projected_utilization": 1.0,
+      "hospitals_reaching_full_count": 3,
+      "hospitals_reaching_icu_full_count": 18,
+      "hospital_load_distribution": {
+        "HOSP_084": 1,
+        "HOSP_092": 2,
+        "HOSP_288": 2,
+        "HOSP_142": 2,
+        "HOSP_254": 2,
+        "HOSP_082": 2,
+        "HOSP_181": 2,
+        "HOSP_253": 2,
+        "HOSP_080": 2,
+        "HOSP_157": 2,
+        "HOSP_064": 2
+      },
+      "max_simultaneous_incoming_reservations": 9
+    },
+    "mci_metrics": {
+      "total_mcis": 1,
+      "peak_concurrent_mcis": 1,
+      "unresolved_mci_casualties": 3
+    },
+    "resilience_score": {
+      "overall": 78.86,
+      "fleet_score": 100.0,
+      "dispatch_score": 100.0,
+      "hospital_score": 86.36,
+      "evacuation_score": 72.73,
+      "saturation_penalty": 15.0,
+      "unresolved_penalty": 10.91
+    }
+  },
+  "resilience_score": {
+    "overall": 78.86,
+    "fleet_score": 100.0,
+    "dispatch_score": 100.0,
+    "hospital_score": 86.36,
+    "evacuation_score": 72.73,
+    "saturation_penalty": 15.0,
+    "unresolved_penalty": 10.91
+  },
+  "created_at": "2026-09-01T15:43:54.439458+00:00"
+}

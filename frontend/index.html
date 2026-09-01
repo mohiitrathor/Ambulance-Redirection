@@ -37,6 +37,15 @@
         <button id="nav-btn-analytics" class="nav-tab-btn">
           <i data-lucide="bar-chart-2"></i> Historical Analytics
         </button>
+        <button id="nav-btn-replay" class="nav-tab-btn">
+          <i data-lucide="play-circle"></i> Operational Replay
+        </button>
+        <button id="nav-btn-review" class="nav-tab-btn">
+          <i data-lucide="clipboard-check"></i> Operations Review
+        </button>
+        <button id="nav-btn-optimization" class="nav-tab-btn">
+          <i data-lucide="sparkles"></i> Optimization
+        </button>
       </div>
 
       <!-- Telemetry Ticker -->
@@ -174,6 +183,70 @@
             </div>
           </div>
 
+          <!-- Fleet Coverage & Dynamic Repositioning (M9) -->
+          <div class="panel-title" style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <i data-lucide="compass"></i>
+              <span>Zone Coverage & Repositioning</span>
+            </div>
+            <button type="button" id="btn-refresh-coverage" class="btn-tactical btn-xs" title="Refresh Zone Coverage" style="padding: 2px 6px; font-size: 11px;">
+              <i data-lucide="refresh-cw" style="width: 12px; height: 12px;"></i>
+            </button>
+          </div>
+          <div id="coordination-coverage-container" style="margin-top: 4px;">
+            <div class="empty-placeholder" style="padding: 6px; font-size: 11px;">Loading zone coverage...</div>
+          </div>
+          <div id="coordination-reposition-container" style="margin-bottom: 8px;">
+            <!-- Populated dynamically via coordination.js -->
+          </div>
+
+          <!-- Multi-Casualty Incident (MCI) Command (M9 Phase 4) -->
+          <div class="panel-title" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <i data-lucide="alert-triangle" style="color: #ef4444;"></i>
+              <span style="color: #f87171; font-weight: 700;">MCI Command</span>
+            </div>
+            <button type="button" id="btn-open-mci-modal" class="btn-tactical btn-xs" title="Declare MCI" style="padding: 2px 8px; font-size: 10px; background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #fca5a5;">
+              <i data-lucide="plus-circle" style="width: 11px; height: 11px;"></i> Declare
+            </button>
+          </div>
+          <div id="mci-container" style="margin-bottom: 8px;">
+            <!-- Populated dynamically via coordination.js -->
+          </div>
+
+          <!-- Disaster Drills & Stress Testing (M10 Phase 2) -->
+          <div class="panel-title" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <i data-lucide="shield-alert" style="color: #38bdf8;"></i>
+              <span style="color: #7dd3fc; font-weight: 700;">Disaster Drills</span>
+            </div>
+          </div>
+          <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid #1e293b; border-radius: 6px; padding: 8px; margin-bottom: 8px;">
+            <div style="margin-bottom: 6px;">
+              <label style="font-size: 10px; color: #94a3b8; display: block; margin-bottom: 2px;">Drill Scenario</label>
+              <select id="select-drill-name" class="tactical-input" style="width: 100%; font-size: 11px; padding: 4px;"></select>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px;">
+              <div>
+                <label style="font-size: 10px; color: #94a3b8; display: block; margin-bottom: 2px;">Casualties</label>
+                <input type="number" id="input-drill-casualties" min="1" max="200" value="25" class="tactical-input" style="width: 100%; font-size: 11px; padding: 4px;" />
+              </div>
+              <div>
+                <label style="font-size: 10px; color: #94a3b8; display: block; margin-bottom: 2px;">PRNG Seed</label>
+                <input type="number" id="input-drill-seed" value="42" class="tactical-input" style="width: 100%; font-size: 11px; padding: 4px;" />
+              </div>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <button type="button" id="btn-run-drill" class="btn-tactical btn-small" style="flex: 1; padding: 4px 8px; font-size: 10px; background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #7dd3fc;">
+                Run Drill
+              </button>
+              <button type="button" id="btn-run-drill-compare" class="btn-tactical btn-small" style="flex: 1; padding: 4px 8px; font-size: 10px; background: rgba(192, 132, 252, 0.2); border-color: #c084fc; color: #e9d5ff;">
+                Compare
+              </button>
+            </div>
+            <div id="drill-results-container"></div>
+          </div>
+
           <!-- Hospital Capacity Saturation Feed -->
           <div class="panel-title" style="margin-top: 8px;">
             <i data-lucide="building-2"></i>
@@ -286,6 +359,546 @@
     </main>
 
     <!-- ==============================================================
+         OPERATIONAL REPLAY & SCENARIO ANALYSIS WORKSPACE (M10 Phase 3)
+         ============================================================== -->
+    <main id="replay-workspace" class="replay-workspace" style="display: none; height: calc(100vh - 110px); grid-template-rows: auto 1fr; gap: 10px; padding: 12px; box-sizing: border-box;">
+      <!-- Replay Playback & Scrubbing Control Bar -->
+      <div style="background: rgba(15, 23, 42, 0.95); border: 1px solid #334155; border-radius: 8px; padding: 10px 14px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div id="replay-mode-banner" style="display: flex; align-items: center; gap: 8px;">
+            <span style="background: #e11d48; color: white; padding: 2px 6px; border-radius: 3px; font-weight: 800; font-size: 10px;">REPLAY MODE</span>
+          </div>
+          <select id="select-replay-run" class="tactical-input" style="font-size: 11px; max-width: 260px;"></select>
+        </div>
+
+        <!-- Playback Controls -->
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <button id="btn-replay-jump-start" class="btn-tactical btn-xs" title="Jump to Start (T=0)">
+            <i data-lucide="chevrons-left"></i>
+          </button>
+          <button id="btn-replay-step-back" class="btn-tactical btn-xs" title="Step Back (-1m)">
+            <i data-lucide="skip-back"></i>
+          </button>
+          <button id="btn-replay-play" class="btn-tactical btn-small btn-play" title="Play Replay">
+            <i data-lucide="play"></i> Play
+          </button>
+          <button id="btn-replay-pause" class="btn-tactical btn-small btn-pause" title="Pause Replay" disabled>
+            <i data-lucide="pause"></i> Pause
+          </button>
+          <button id="btn-replay-step-forward" class="btn-tactical btn-xs" title="Step Forward (+1m)">
+            <i data-lucide="skip-forward"></i>
+          </button>
+          <button id="btn-replay-jump-end" class="btn-tactical btn-xs" title="Jump to End">
+            <i data-lucide="chevrons-right"></i>
+          </button>
+          <select id="select-replay-speed" class="speed-select" style="padding: 2px 6px; font-size: 10px;">
+            <option value="0.5">0.5x</option>
+            <option value="1.0" selected>1x</option>
+            <option value="2.0">2x</option>
+            <option value="5.0">5x</option>
+            <option value="10.0">10x</option>
+          </select>
+        </div>
+
+        <!-- Seek Slider & Clock -->
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <input type="range" id="slider-replay-seek" min="0" max="15" value="0" style="width: 140px; cursor: pointer;" />
+          <span id="replay-clock-display" style="font-family: monospace; font-weight: 700; color: #38bdf8; font-size: 12px; min-width: 90px;">T+0m / T+15m</span>
+        </div>
+      </div>
+
+      <!-- Main Replay Grid (3 Columns: Browser & Compare | Replay Map & KPIs | Timeline & Inspector) -->
+      <div style="display: grid; grid-template-columns: 320px 1fr 340px; gap: 10px; min-height: 0;">
+        <!-- Column 1: Replay Browser, A/B Compare & Report Export -->
+        <div style="display: flex; flex-direction: column; gap: 10px; overflow-y: auto;">
+          <!-- Scenario & Replay Browser -->
+          <div class="panel" style="flex: 1; min-height: 220px; display: flex; flex-direction: column;">
+            <div class="panel-header">
+              <div class="panel-title">
+                <i data-lucide="folder"></i>
+                <span>Scenario Archives</span>
+              </div>
+              <button id="btn-refresh-replay-browser" class="btn-tactical btn-xs"><i data-lucide="rotate-cw"></i></button>
+            </div>
+            <div class="table-container" style="flex: 1; max-height: 200px; overflow-y: auto;">
+              <table class="tactical-table">
+                <thead>
+                  <tr>
+                    <th>Scenario</th>
+                    <th>Run ID</th>
+                    <th>Duration</th>
+                    <th>Hash</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="table-replays-browser"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Scenario Comparison (A vs B) -->
+          <div class="panel" style="padding: 10px;">
+            <div class="panel-title" style="margin-bottom: 8px;">
+              <i data-lucide="git-compare"></i>
+              <span>Scenario Differential (A vs B)</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px;">
+              <div>
+                <label style="font-size: 9px; color: #94a3b8; display: block;">Scenario A</label>
+                <select id="select-compare-scenario-a" class="tactical-input" style="width: 100%; font-size: 10px;"></select>
+              </div>
+              <div>
+                <label style="font-size: 9px; color: #94a3b8; display: block;">Scenario B</label>
+                <select id="select-compare-scenario-b" class="tactical-input" style="width: 100%; font-size: 10px;"></select>
+              </div>
+            </div>
+            <button id="btn-execute-scenario-compare" class="btn-tactical btn-small" style="width: 100%; font-size: 10px; background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #7dd3fc;">
+              Compare Scenarios
+            </button>
+            <div id="compare-results-container"></div>
+          </div>
+
+          <!-- Before / After Snapshot Delta -->
+          <div class="panel" style="padding: 10px;">
+            <div class="panel-title" style="margin-bottom: 6px;">
+              <i data-lucide="clock"></i>
+              <span>Snapshot Delta (T_a vs T_b)</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px;">
+              <div>
+                <label style="font-size: 9px; color: #94a3b8;">Minute T_a</label>
+                <input type="number" id="input-before-after-time-a" value="2" min="0" class="tactical-input" style="width: 100%; font-size: 10px;" />
+              </div>
+              <div>
+                <label style="font-size: 9px; color: #94a3b8;">Minute T_b</label>
+                <input type="number" id="input-before-after-time-b" value="8" min="0" class="tactical-input" style="width: 100%; font-size: 10px;" />
+              </div>
+            </div>
+            <button id="btn-execute-before-after" class="btn-tactical btn-small" style="width: 100%; font-size: 10px; background: rgba(168, 85, 247, 0.2); border-color: #a855f7; color: #d8b4fe;">
+              Compute Delta
+            </button>
+            <div id="before-after-results-container"></div>
+          </div>
+
+          <!-- Drill Report Export -->
+          <div class="panel" style="padding: 10px; display: flex; gap: 6px;">
+            <button id="btn-export-report-json" class="btn-tactical btn-small" style="flex: 1; font-size: 10px;">
+              <i data-lucide="file-text"></i> Export JSON
+            </button>
+            <button id="btn-export-report-md" class="btn-tactical btn-small" style="flex: 1; font-size: 10px;">
+              <i data-lucide="download"></i> Export MD
+            </button>
+          </div>
+        </div>
+
+        <!-- Column 2: Replay Leaflet Map & KPI Summary Scorecard -->
+        <div style="display: flex; flex-direction: column; gap: 10px; min-height: 0;">
+          <!-- KPI Scorecards Grid -->
+          <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;">
+            <div class="kpi-card" style="padding: 8px;">
+              <span class="kpi-label" style="font-size: 9px;">Resilience</span>
+              <span id="analysis-kpi-resilience" class="kpi-val text-green" style="font-size: 16px;">-</span>
+            </div>
+            <div class="kpi-card" style="padding: 8px;">
+              <span class="kpi-label" style="font-size: 9px;">Dispatch Success</span>
+              <span id="analysis-kpi-dispatch-success" class="kpi-val text-cyan" style="font-size: 16px;">-</span>
+            </div>
+            <div class="kpi-card" style="padding: 8px;">
+              <span class="kpi-label" style="font-size: 9px;">Average ETA</span>
+              <span id="analysis-kpi-avg-eta" class="kpi-val" style="font-size: 16px;">-</span>
+            </div>
+            <div class="kpi-card" style="padding: 8px;">
+              <span class="kpi-label" style="font-size: 9px;">Unresolved</span>
+              <span id="analysis-kpi-unresolved" class="kpi-val text-amber" style="font-size: 16px;">-</span>
+            </div>
+            <div class="kpi-card" style="padding: 8px;">
+              <span class="kpi-label" style="font-size: 9px;">Hospital Saturated</span>
+              <span id="analysis-kpi-saturation" class="kpi-val text-red" style="font-size: 16px;">-</span>
+            </div>
+          </div>
+
+          <!-- Replay Tactical Map -->
+          <div class="map-container" style="flex: 1; border-radius: 8px; border: 1px solid #334155; position: relative; min-height: 350px;">
+            <div id="replay-leaflet-map" style="width: 100%; height: 100%; border-radius: 7px;"></div>
+          </div>
+
+          <!-- Telemetry Summary Breakdown -->
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-size: 10px;">
+            <div class="panel" style="padding: 8px;">
+              <div style="font-weight: 700; color: #38bdf8; margin-bottom: 4px;">Fleet Telemetry</div>
+              <div id="analysis-fleet-stats" style="color: #cbd5e1;">-</div>
+            </div>
+            <div class="panel" style="padding: 8px;">
+              <div style="font-weight: 700; color: #10b981; margin-bottom: 4px;">Hospital Load</div>
+              <div id="analysis-hospital-stats" style="color: #cbd5e1;">-</div>
+            </div>
+            <div class="panel" style="padding: 8px;">
+              <div style="font-weight: 700; color: #ef4444; margin-bottom: 4px;">MCI Telemetry</div>
+              <div id="analysis-mci-stats" style="color: #cbd5e1;">-</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Column 3: Timeline & Deep Event Inspector -->
+        <div style="display: flex; flex-direction: column; gap: 10px; min-height: 0;">
+          <!-- Operational Timeline -->
+          <div class="panel" style="flex: 1; display: flex; flex-direction: column; min-height: 250px;">
+            <div class="panel-header">
+              <div class="panel-title">
+                <i data-lucide="list"></i>
+                <span>Replay Timeline</span>
+              </div>
+              <select id="select-replay-filter-type" class="speed-select" style="font-size: 9px; padding: 2px 4px;">
+                <option value="ALL">All Events</option>
+                <option value="DISPATCH">Dispatches</option>
+                <option value="AMBULANCE_ARRIVED">Arrivals</option>
+                <option value="MCI_DECLARED">MCI</option>
+                <option value="REDIRECTION">Redirections</option>
+                <option value="REPOSITION_START">Repositions</option>
+                <option value="HOSPITAL_SATURATED">Saturation</option>
+              </select>
+            </div>
+            <div id="replay-timeline-list" style="flex: 1; overflow-y: auto; max-height: 320px;"></div>
+          </div>
+
+          <!-- Deep Event Inspector Panel -->
+          <div class="panel" style="flex: 1; padding: 10px; display: flex; flex-direction: column; min-height: 200px;">
+            <div class="panel-title" style="margin-bottom: 6px;">
+              <i data-lucide="info"></i>
+              <span>Event Inspector</span>
+            </div>
+            <div id="replay-event-inspector" style="flex: 1; overflow-y: auto;">
+              <div style="padding: 12px; color: #64748b; font-size: 11px; text-align: center;">Click an event in the timeline to inspect full operational details.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ==============================================================
+         OPERATIONS REVIEW WORKSPACE (M10 Phase 4: PIR & REGRESSION)
+         ============================================================== -->
+    <main id="review-workspace" class="review-workspace" style="display: none; height: calc(100vh - 110px); grid-template-rows: auto 1fr; gap: 10px; padding: 12px; box-sizing: border-box; overflow-y: auto;">
+      <!-- Header Banner & Run Selection -->
+      <div style="background: rgba(15, 23, 42, 0.95); border: 1px solid #334155; border-radius: 8px; padding: 10px 14px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="background: #6366f1; color: white; padding: 2px 8px; border-radius: 3px; font-weight: 800; font-size: 10px;">ANALYSIS MODE</span>
+          <span style="font-weight: 700; color: #f1f5f9; font-size: 13px;">Post-Incident Review & Continuous Regression</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <label style="font-size: 11px; color: #94a3b8;">Review Run:</label>
+          <select id="select-pir-run" class="tactical-input" style="font-size: 11px; max-width: 260px;"></select>
+          <button id="btn-refresh-pir" class="btn-tactical btn-xs"><i data-lucide="rotate-cw"></i></button>
+          <button id="btn-export-pir-json" class="btn-tactical btn-xs" style="margin-left: 6px;"><i data-lucide="file-text"></i> JSON</button>
+          <button id="btn-export-pir-md" class="btn-tactical btn-xs"><i data-lucide="download"></i> MD</button>
+        </div>
+      </div>
+
+      <!-- Main Review Grid (2 Columns: PIR & Root Causes | Continuous Regression Dashboard) -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-height: 0;">
+        <!-- Column 1: Automated Post-Incident Review -->
+        <div style="display: flex; flex-direction: column; gap: 10px; overflow-y: auto;">
+          <!-- Executive Summary Card -->
+          <div class="panel" style="padding: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div style="font-weight: 700; color: #38bdf8; font-size: 12px;">PIR Executive Scorecard</div>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <span id="pir-severity-badge" style="padding: 2px 8px; border-radius: 3px; font-weight: 800; font-size: 10px; background: #22c55e; color: #000;">NORMAL</span>
+                <span id="pir-resilience-score" style="font-family: monospace; font-weight: 800; font-size: 12px; color: #38bdf8;">100.0/100</span>
+              </div>
+            </div>
+            <div id="pir-summary-text" style="color: #cbd5e1; font-size: 11px; line-height: 1.4;">Loading post-incident evaluation...</div>
+          </div>
+
+          <!-- Root Cause Causal Graph -->
+          <div class="panel" style="padding: 12px;">
+            <div class="panel-title" style="margin-bottom: 6px;">
+              <i data-lucide="git-merge"></i>
+              <span>Root-Cause Causal Analysis</span>
+            </div>
+            <div id="pir-root-cause-graph"></div>
+          </div>
+
+          <!-- Operational Findings -->
+          <div class="panel" style="padding: 12px; flex: 1;">
+            <div class="panel-header" style="margin-bottom: 8px;">
+              <div class="panel-title">
+                <i data-lucide="alert-circle"></i>
+                <span>Detected Findings</span>
+              </div>
+              <select id="select-pir-finding-category" class="speed-select" style="font-size: 9px; padding: 2px 4px;">
+                <option value="ALL">All Categories</option>
+                <option value="FLEET">Fleet</option>
+                <option value="DISPATCH">Dispatch</option>
+                <option value="HOSPITAL">Hospital</option>
+                <option value="MCI">MCI</option>
+                <option value="REPOSITIONING">Repositioning</option>
+              </select>
+            </div>
+            <div id="pir-findings-list" style="max-height: 280px; overflow-y: auto;"></div>
+          </div>
+
+          <!-- Actionable Recommendations -->
+          <div class="panel" style="padding: 12px;">
+            <div class="panel-title" style="margin-bottom: 6px;">
+              <i data-lucide="check-square"></i>
+              <span>Operational Recommendations</span>
+            </div>
+            <div id="pir-recommendations-list" style="max-height: 220px; overflow-y: auto;"></div>
+          </div>
+        </div>
+
+        <!-- Column 2: Continuous Regression Dashboard -->
+        <div style="display: flex; flex-direction: column; gap: 10px; overflow-y: auto;">
+          <!-- Regression Suite Header & Controls -->
+          <div class="panel" style="padding: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <div>
+                <div style="font-weight: 700; color: #38bdf8; font-size: 12px;">Continuous Regression Suite</div>
+                <div style="font-size: 10px; color: #94a3b8;">
+                  Baseline: <b id="reg-baseline-version">-</b> | Candidate: <b id="reg-candidate-version">-</b>
+                </div>
+              </div>
+              <div id="reg-overall-status" style="font-size: 16px; font-weight: 900; color: #22c55e;">IDLE</div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px;">
+              <div class="kpi-card" style="padding: 6px; text-align: center;">
+                <span class="kpi-label" style="font-size: 9px;">Passed</span>
+                <span id="reg-passed-count" class="kpi-val text-green" style="font-size: 14px;">0</span>
+              </div>
+              <div class="kpi-card" style="padding: 6px; text-align: center;">
+                <span class="kpi-label" style="font-size: 9px;">Warnings</span>
+                <span id="reg-warned-count" class="kpi-val text-amber" style="font-size: 14px;">0</span>
+              </div>
+              <div class="kpi-card" style="padding: 6px; text-align: center;">
+                <span class="kpi-label" style="font-size: 9px;">Failed</span>
+                <span id="reg-failed-count" class="kpi-val text-red" style="font-size: 14px;">0</span>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+              <button id="btn-run-reg-suite" class="btn-tactical btn-small" style="background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #7dd3fc; font-size: 10px;">
+                <i data-lucide="play"></i> Run Standard Suite
+              </button>
+              <button id="btn-create-reg-baseline" class="btn-tactical btn-small" style="background: rgba(168, 85, 247, 0.2); border-color: #a855f7; color: #d8b4fe; font-size: 10px;">
+                <i data-lucide="bookmark"></i> Set Baseline
+              </button>
+              <button id="btn-run-reg-25" class="btn-tactical btn-xs">25 Casualty</button>
+              <button id="btn-run-reg-50" class="btn-tactical btn-xs">50 Casualty</button>
+              <button id="btn-run-reg-100" class="btn-tactical btn-xs">100 Casualty</button>
+            </div>
+          </div>
+
+          <!-- Regression Cases Table -->
+          <div class="panel" style="flex: 1; padding: 12px; display: flex; flex-direction: column;">
+            <div class="panel-title" style="margin-bottom: 8px;">
+              <i data-lucide="shield"></i>
+              <span>Standard Drill Regression Evaluation</span>
+            </div>
+            <div class="table-container" style="flex: 1; overflow-y: auto;">
+              <table class="tactical-table">
+                <thead>
+                  <tr>
+                    <th>Case / Scenario</th>
+                    <th>Baseline</th>
+                    <th>Current</th>
+                    <th>Δ</th>
+                    <th>Hash</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="reg-cases-tbody">
+                  <tr>
+                    <td colspan="6" class="empty-placeholder" style="padding: 12px; text-align: center;">Click 'Run Standard Suite' to execute regression catalog.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ==============================================================
+         OPTIMIZATION WORKSPACE (M11 Phase 1: DECISION INTELLIGENCE)
+         ============================================================== -->
+    <main id="optimization-workspace" class="optimization-workspace" style="display: none; height: calc(100vh - 110px); grid-template-rows: auto 1fr; gap: 10px; padding: 12px; box-sizing: border-box; overflow-y: auto;">
+      <!-- Header Banner & Mode Indicator -->
+      <div style="background: rgba(15, 23, 42, 0.95); border: 1px solid #334155; border-radius: 8px; padding: 10px 14px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="background: #38bdf8; color: #000; padding: 2px 8px; border-radius: 3px; font-weight: 800; font-size: 10px;">OPTIMIZATION MODE: OPERATOR COPILOT</span>
+          <span style="color: #94a3b8; font-size: 11px; font-weight: 700;">READ-ONLY / RECOMMENDATION ONLY UNTIL OPERATOR APPROVAL (NO AUTONOMOUS ACTION)</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 10px; color: #94a3b8; font-weight: 700;">POLICY:</span>
+          <div style="display: flex; gap: 3px;">
+            <button id="btn-policy-off" class="btn-tactical btn-xs" style="padding: 2px 6px; font-size: 9px;">OFF</button>
+            <button id="btn-policy-advisory" class="btn-tactical btn-xs" style="padding: 2px 6px; font-size: 9px;">ADVISORY</button>
+            <button id="btn-policy-guarded" class="btn-tactical btn-xs active" style="padding: 2px 6px; font-size: 9px; background: #0284c7; color: #fff;">GUARDED</button>
+          </div>
+          <button id="btn-kill-switch" class="btn-tactical btn-xs" style="border-color: #ef4444; color: #f87171; font-weight: 800;"><i data-lucide="shield-alert"></i> KILL SWITCH</button>
+          <span id="opt-health-badge" style="background: rgba(34, 197, 94, 0.15); border: 1px solid #22c55e; color: #86efac; font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 4px;">HEALTH: NORMAL</span>
+          <button id="btn-refresh-opt" class="btn-tactical btn-xs"><i data-lucide="rotate-cw"></i> Refresh</button>
+        </div>
+      </div>
+
+      <!-- Telemetry Cards & Main 2-Column Optimization Grid -->
+      <div style="display: grid; grid-template-rows: auto 1fr; gap: 10px; min-height: 0;">
+        <!-- Telemetry Summary Cards -->
+        <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;">
+          <div class="kpi-card" style="padding: 8px 12px;">
+            <span class="kpi-label">Policy Mode</span>
+            <span id="opt-policy-mode-val" class="kpi-val text-cyan" style="font-size: 12px;">GUARDED</span>
+          </div>
+          <div class="kpi-card" style="padding: 8px 12px;">
+            <span class="kpi-label">Auto Executed</span>
+            <span id="opt-auto-actions-count" class="kpi-val text-green" style="font-size: 16px;">0</span>
+          </div>
+          <div class="kpi-card" style="padding: 8px 12px;">
+            <span class="kpi-label">Pending / Active</span>
+            <span id="opt-pending-count" class="kpi-val text-cyan" style="font-size: 16px;">0</span>
+          </div>
+          <div class="kpi-card" style="padding: 8px 12px;">
+            <span class="kpi-label">Blocked Actions</span>
+            <span id="opt-blocked-count" class="kpi-val text-amber" style="font-size: 16px;">0</span>
+          </div>
+          <div class="kpi-card" style="padding: 8px 12px;">
+            <span class="kpi-label">Executions Log</span>
+            <span id="opt-executions-count" class="kpi-val text-white" style="font-size: 16px;">0</span>
+          </div>
+          <div class="kpi-card" style="padding: 8px 12px;">
+            <span class="kpi-label">Latest Outcome</span>
+            <span id="opt-latest-outcome" class="kpi-val text-green" style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">NONE</span>
+          </div>
+        </div>
+
+        <!-- 2 Columns: Ranked Recommendations List | Deep Explanation & What-If Simulation -->
+        <div style="display: grid; grid-template-columns: 380px 1fr; gap: 10px; min-height: 0;">
+          <!-- Left Column: Recommendations -->
+          <div class="panel" style="padding: 12px; display: flex; flex-direction: column;">
+            <div class="panel-header" style="margin-bottom: 8px;">
+              <div class="panel-title">
+                <i data-lucide="list-ordered"></i>
+                <span>Ranked Recommendations</span>
+              </div>
+              <select id="select-opt-filter-type" class="speed-select" style="font-size: 9px; padding: 2px 4px;">
+                <option value="ALL">All Decisions</option>
+                <option value="FLEET_REPOSITION">Fleet Reposition</option>
+                <option value="HOSPITAL_DIVERSION">Hospital Diversion</option>
+                <option value="MCI_INTERCEPTION">MCI Interception</option>
+              </select>
+            </div>
+            <div id="opt-recommendations-list" style="flex: 1; overflow-y: auto;">
+              <div style="padding: 16px; color: #64748b; font-size: 11px; text-align: center;">
+                Click 'Refresh Intelligence' to evaluate operational state.
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: Deep Explanation & What-If Simulator -->
+          <div class="panel" style="padding: 12px; display: flex; flex-direction: column; overflow-y: auto;">
+            <div class="panel-title" style="margin-bottom: 8px;">
+              <i data-lucide="cpu"></i>
+              <span>Decision Intelligence & What-If Simulation</span>
+            </div>
+            <div id="opt-detail-container" style="flex: 1;">
+              <div style="padding: 24px; color: #64748b; font-size: 12px; text-align: center;">
+                Select a recommendation from the left panel to inspect operational reasons, component scoring, risks, and execute what-if simulations.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 13: Operational Learning, Confidence Calibration & Adaptive Policy Section -->
+        <div id="opt-learning-container" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 5px;">
+          <!-- Card 1: Operating Policy & Telemetry -->
+          <div class="panel" style="padding: 12px;">
+            <div class="panel-header" style="margin-bottom: 6px;">
+              <div class="panel-title">
+                <i data-lucide="shield-check"></i>
+                <span>Operating Policy</span>
+              </div>
+              <span id="learning-safety-score-badge" style="background: rgba(34, 197, 94, 0.2); border: 1px solid #22c55e; color: #86efac; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 4px;">
+                SAFETY: <span id="learning-safety-score-val">100</span>/100
+              </span>
+            </div>
+            <div style="font-size: 11px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; color: #cbd5e1;">
+              <div>Version: <span id="learning-policy-version" style="color: #38bdf8; font-weight: 700;">v1</span></div>
+              <div>Mode: <span id="learning-policy-mode" style="color: #38bdf8; font-weight: 700;">GUARDED</span></div>
+              <div>Confidence Threshold: <span id="learning-policy-threshold" style="color: #22c55e; font-weight: 700;">0.95</span></div>
+              <div>Policy Drift: <span id="learning-policy-drift" style="color: #22c55e; font-weight: 700;">NORMAL</span></div>
+              <div>Autonomous Actions: <span id="learning-auto-actions" style="font-weight: 700;">0</span></div>
+              <div>Success Rate: <span id="learning-success-rate" style="color: #86efac; font-weight: 700;">100%</span></div>
+              <div>Harmful Actions: <span id="learning-harmful-actions" style="color: #f87171; font-weight: 700;">0</span></div>
+              <div>Rollbacks: <span id="learning-rollbacks" style="font-weight: 700;">0</span></div>
+            </div>
+            <!-- Policy History Mini Stream -->
+            <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 6px;">
+              <div style="font-size: 10px; font-weight: 700; color: #94a3b8; margin-bottom: 4px;">Policy Version History</div>
+              <div id="policy-history-list" style="font-size: 10px; color: #64748b; max-height: 60px; overflow-y: auto;">
+                v1: Initial production baseline (SYSTEM_INIT)
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2: Confidence Calibration Buckets -->
+          <div class="panel" style="padding: 12px; display: flex; flex-direction: column;">
+            <div class="panel-header" style="margin-bottom: 6px;">
+              <div class="panel-title">
+                <i data-lucide="bar-chart-2"></i>
+                <span>Confidence Calibration</span>
+              </div>
+              <span id="calib-status-badge" style="font-size: 9px; color: #86efac;">Well-Calibrated</span>
+            </div>
+            <div style="flex: 1; overflow-y: auto;">
+              <table class="tactical-table" style="font-size: 10px;">
+                <thead>
+                  <tr>
+                    <th>Bucket</th>
+                    <th>Count</th>
+                    <th>Observed</th>
+                    <th>Calib Error</th>
+                  </tr>
+                </thead>
+                <tbody id="calibration-table-body">
+                  <tr>
+                    <td>0.90–0.95</td>
+                    <td>0</td>
+                    <td>--</td>
+                    <td>0.0%</td>
+                  </tr>
+                  <tr>
+                    <td>0.95–1.00</td>
+                    <td>0</td>
+                    <td>--</td>
+                    <td>0.0%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Card 3: Adaptive Policy Recommendations -->
+          <div class="panel" style="padding: 12px; display: flex; flex-direction: column;">
+            <div class="panel-header" style="margin-bottom: 6px;">
+              <div class="panel-title">
+                <i data-lucide="lightbulb"></i>
+                <span>Adaptive Recommendations</span>
+              </div>
+            </div>
+            <div id="adaptive-recs-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
+              <div style="font-size: 11px; color: #64748b; text-align: center; padding: 12px;">
+                Nominal performance: no policy parameter tuning needed.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ==============================================================
          BOTTOM DRAWER: EVENT LOG & REDIRECTION AUDIT
          ============================================================== -->
     <footer id="bottom-drawer">
@@ -343,6 +956,61 @@
 
   <!-- Slide-Out Incident Detail Drawer -->
   <aside id="drawer-incident-detail" class="tactical-drawer"></aside>
+
+  <!-- MCI Declaration Modal -->
+  <div id="mci-modal" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 9999; align-items: center; justify-content: center;">
+    <div class="modal-card" style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; max-width: 440px; width: 90%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);">
+      <div class="modal-header" style="padding: 12px 16px; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="alert-triangle" style="color: #ef4444; width: 16px; height: 16px;"></i>
+          <span style="font-weight: 700; color: #f87171; font-size: 13px;">Declare Multi-Casualty Incident</span>
+        </div>
+        <button type="button" id="btn-close-mci-modal" style="background: transparent; border: none; color: #94a3b8; font-size: 18px; cursor: pointer;">&times;</button>
+      </div>
+      <form id="form-declare-mci" style="padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+        <div>
+          <label style="font-size: 11px; color: #94a3b8; display: block; margin-bottom: 4px;">MCI Name / Location</label>
+          <input type="text" id="mci-name" class="tactical-input" value="Highway 11 Multi-Vehicle Collision" required style="width: 100%; box-sizing: border-box;" />
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div>
+            <label style="font-size: 11px; color: #94a3b8; display: block; margin-bottom: 4px;">Latitude</label>
+            <input type="number" id="mci-lat" step="0.0001" class="tactical-input" value="26.9124" required style="width: 100%; box-sizing: border-box;" />
+          </div>
+          <div>
+            <label style="font-size: 11px; color: #94a3b8; display: block; margin-bottom: 4px;">Longitude</label>
+            <input type="number" id="mci-lon" step="0.0001" class="tactical-input" value="75.7873" required style="width: 100%; box-sizing: border-box;" />
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div>
+            <label style="font-size: 11px; color: #94a3b8; display: block; margin-bottom: 4px;">Casualty Count</label>
+            <input type="number" id="mci-casualties" min="1" max="50" class="tactical-input" value="5" required style="width: 100%; box-sizing: border-box;" />
+          </div>
+          <div>
+            <label style="font-size: 11px; color: #94a3b8; display: block; margin-bottom: 4px;">Condition</label>
+            <select id="mci-condition" class="tactical-input" style="width: 100%; box-sizing: border-box;">
+              <option value="Trauma" selected>Trauma</option>
+              <option value="Cardiac">Cardiac</option>
+              <option value="Respiratory">Respiratory</option>
+              <option value="Neurological">Neurological</option>
+              <option value="Infection">Infection</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label style="font-size: 11px; color: #94a3b8; display: block; margin-bottom: 4px;">Dispatcher Notes</label>
+          <input type="text" id="mci-notes" class="tactical-input" placeholder="Multi-vehicle pileup, multiple trapped casualties" style="width: 100%; box-sizing: border-box;" />
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+          <button type="button" id="btn-cancel-mci-modal" class="btn-tactical btn-secondary" style="padding: 6px 12px; font-size: 11px; cursor: pointer;">Cancel</button>
+          <button type="submit" class="btn-tactical btn-danger" style="background: #dc2626; border: 1px solid #ef4444; color: white; padding: 6px 14px; font-size: 11px; font-weight: 700; cursor: pointer;">
+            Declare & Dispatch
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- Main ES Module Bootstrap -->
   <script type="module" src="js/app.js"></script>
