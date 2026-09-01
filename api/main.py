@@ -1,10 +1,14 @@
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from api.config import FRONTEND_DIR
+from api.settings import settings
+from api.observability import setup_structured_logging, ObservabilityMiddleware
 from api.dependencies import manager
 from api.persistence.bridge import persistence_bridge
 from api.routers import (
@@ -21,6 +25,9 @@ from api.routers import (
     post_incident,
     optimization,
 )
+
+# Initialize structured logging
+setup_structured_logging(log_level=settings.log_level, log_format=settings.log_format)
 
 
 # ==============================================================
@@ -60,26 +67,30 @@ async def lifespan(app: FastAPI):
 # ==============================================================
 
 app = FastAPI(
-    title="RAAH — Emergency Dispatch API",
+    title=settings.app_name,
     description=(
         "AI/ML-powered dynamic ambulance dispatch "
         "and hospital redirection system."
     ),
-    version="0.1.0",
+    version=settings.app_version,
     lifespan=lifespan,
 )
 
 
 # ==============================================================
-# CORS
+# MIDDLEWARE
 # ==============================================================
 
+# Request correlation ID & structured access logging
+app.add_middleware(ObservabilityMiddleware)
+
+# CORS Whitelist from centralized settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origins,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=settings.cors_allow_methods,
+    allow_headers=settings.cors_allow_headers,
 )
 
 
@@ -155,7 +166,7 @@ app.include_router(
 @app.get(
     "/health",
     tags=["Health"],
-    summary="Health check",
+    summary="Health check (legacy backwards-compatible)",
     description=(
         "Returns server status, current simulation time, "
         "and real-time mode status."
@@ -168,6 +179,41 @@ def health():
         "time": manager.simulator.state.current_time,
         "realtime_running": manager.is_realtime_running,
     }
+
+
+@app.get(
+    "/health/live",
+    tags=["Health"],
+    summary="Process liveness probe",
+    description="Cheap probe confirming the API process is alive and accepting traffic.",
+)
+def health_live():
+    return {
+        "status": "ALIVE",
+        "service": settings.app_name,
+        "version": settings.app_version,
+        "environment": settings.environment,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get(
+    "/health/ready",
+    tags=["Health"],
+    summary="Application readiness probe",
+    description="Deep probe checking simulator, database, and background engine readiness.",
+)
+def health_ready():
+    is_ready, checks = manager.check_readiness()
+    payload = {
+        "status": "READY" if is_ready else "NOT_READY",
+        "ready": is_ready,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "checks": checks,
+    }
+    if not is_ready:
+        return JSONResponse(status_code=503, content=payload)
+    return payload
 
 
 # ==============================================================

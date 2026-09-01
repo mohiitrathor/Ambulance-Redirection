@@ -91,6 +91,9 @@ class LearningRecommendation:
         )
 
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
 # ----------------------------------------------------------------------
 # POLICY VERSION STORE (IMMUTABLE CONFIG HISTORY)
 # ----------------------------------------------------------------------
@@ -102,7 +105,7 @@ class PolicyVersionStore:
     Every update or rollback writes a new immutable version file.
     """
 
-    DEFAULT_STORE_DIR = Path("/home/glitchedpotato/RAAH/data/optimization/policy_versions")
+    DEFAULT_STORE_DIR = _REPO_ROOT / "data" / "optimization" / "policy_versions"
 
     def __init__(self, store_dir: Optional[Path] = None):
         self.store_dir = store_dir or self.DEFAULT_STORE_DIR

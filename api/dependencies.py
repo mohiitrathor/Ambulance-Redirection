@@ -83,6 +83,54 @@ class SimulatorManager:
             return self._active_run_id
 
     # ----------------------------------------------------------
+    # INITIALIZED STATUS
+    # ----------------------------------------------------------
+
+    @property
+    def is_initialized(self) -> bool:
+        with self._lock:
+            return self._simulator is not None
+
+    @property
+    def status(self) -> str:
+        with self._lifecycle_lock:
+            return self._status
+
+    def check_readiness(self) -> tuple[bool, dict]:
+        checks = {}
+        with self._lock:
+            sim_init = self._simulator is not None
+            checks["simulator_initialized"] = sim_init
+            state_ok = False
+            if sim_init:
+                try:
+                    state_ok = self._simulator.state is not None
+                except Exception:
+                    state_ok = False
+            checks["simulator_state_available"] = state_ok
+
+        db_ok = False
+        try:
+            from api.persistence.db import get_connection
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1;")
+            db_ok = True
+            conn.close()
+        except Exception:
+            db_ok = False
+        checks["database_reachable"] = db_ok
+
+        with self._lifecycle_lock:
+            sim_status_ok = self._status in ("RUNNING", "STOPPED") and self._consecutive_errors == 0
+            checks["simulation_status_valid"] = sim_status_ok
+            checks["simulation_status"] = self._status
+            checks["consecutive_errors"] = self._consecutive_errors
+
+        is_ready = all([sim_init, state_ok, db_ok, sim_status_ok])
+        return is_ready, checks
+
+    # ----------------------------------------------------------
     # SIMULATOR ACCESS
     # ----------------------------------------------------------
 

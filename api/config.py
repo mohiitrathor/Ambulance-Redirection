@@ -1,13 +1,19 @@
-from pathlib import Path
+"""
+RAAH Project Configuration Bridge
+=================================
 
+Bridges historical path imports to the centralized api.settings.Settings layer.
+Preserves full backwards compatibility for all modules importing from api.config.
+"""
 
-# ==============================================================
-# PROJECT PATHS
-# ==============================================================
+from api.settings import settings
 
-ROOT = Path(__file__).resolve().parents[1]
+# Backwards-compatible path constants
+ROOT = settings.root_dir
+DISPATCH_DIR = settings.dispatch_dir
+DATASET_DIR = settings.dataset_dir
+DATA_DIR = settings.data_dir
+FRONTEND_DIR = settings.frontend_dir
 
-DISPATCH_DIR = ROOT / "Dispatch"
-DATASET_DIR = ROOT / "Dataset"
-DATA_DIR = ROOT / "data"
-FRONTEND_DIR = ROOT / "frontend"
+# Export the settings instance
+__all__ = ["ROOT", "DISPATCH_DIR", "DATASET_DIR", "DATA_DIR", "FRONTEND_DIR", "settings"]

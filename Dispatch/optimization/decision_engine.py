@@ -8,6 +8,7 @@ deterministically, executes isolated what-if impact simulations, and bridges app
 actions into authoritative Simulator executions with audit logging.
 """
 
+import threading
 from typing import List, Dict, Any, Optional, Tuple
 import time
 from datetime import datetime, timezone
@@ -82,7 +83,8 @@ class DecisionEngine:
         self.drift_detector = DriftDetector()
         self.adaptation_advisor = AdaptivePolicyAdvisor()
 
-        # In-memory audit index of recommendations and candidates
+        # Dedicated reentrant lock for internal indices and mutable recommendation state
+        self._lock = threading.RLock()
         self._recommendations_index: Dict[str, OptimizationRecommendation] = {}
         self._candidates_index: Dict[str, OptimizationCandidate] = {}
         self._last_snapshot: Optional[OperationalSnapshot] = None
@@ -90,7 +92,8 @@ class DecisionEngine:
     def get_snapshot(self, sim_instance) -> OperationalSnapshot:
         """Capture and return the current operational snapshot."""
         snap = self.observer.capture_snapshot(sim_instance)
-        self._last_snapshot = snap
+        with self._lock:
+            self._last_snapshot = snap
         return snap
 
     def evaluate_state(self, sim_instance) -> List[OptimizationRecommendation]:
@@ -106,17 +109,18 @@ class DecisionEngine:
         # 1. AUTO-DISMISSAL / EXPIRATION PASS ON EXISTING RECOMMENDATIONS
         # --------------------------------------------------------------
         ambs = sim_instance.state.ambulances
-        for rid, existing_rec in self._recommendations_index.items():
-            if existing_rec.status in (RecommendationStatus.NEW, "ACTIVE", RecommendationStatus.REVIEWED):
-                if current_sim_time > existing_rec.expires_at_sim_time:
-                    existing_rec.status = RecommendationStatus.EXPIRED
-                    existing_rec.rejection_reason = "TTL expired before operator approval."
-                elif existing_rec.decision_type == "FLEET_REPOSITION":
-                    aid = existing_rec.candidate_action.get("ambulance_id")
-                    if aid and aid in ambs:
-                        if str(ambs[aid].status).upper() != "AVAILABLE":
-                            existing_rec.status = RecommendationStatus.OBSOLETE
-                            existing_rec.rejection_reason = f"Ambulance '{aid}' is no longer available (now {ambs[aid].status})."
+        with self._lock:
+            for rid, existing_rec in list(self._recommendations_index.items()):
+                if existing_rec.status in (RecommendationStatus.NEW, "ACTIVE", RecommendationStatus.REVIEWED):
+                    if current_sim_time > existing_rec.expires_at_sim_time:
+                        existing_rec.status = RecommendationStatus.EXPIRED
+                        existing_rec.rejection_reason = "TTL expired before operator approval."
+                    elif existing_rec.decision_type == "FLEET_REPOSITION":
+                        aid = existing_rec.candidate_action.get("ambulance_id")
+                        if aid and aid in ambs:
+                            if str(ambs[aid].status).upper() != "AVAILABLE":
+                                existing_rec.status = RecommendationStatus.OBSOLETE
+                                existing_rec.rejection_reason = f"Ambulance '{aid}' is no longer available (now {ambs[aid].status})."
 
         # --------------------------------------------------------------
         # 2. GENERATE NEW CANDIDATES
@@ -129,8 +133,9 @@ class DecisionEngine:
         hosp_cands = self.hospital_optimizer.generate_candidates(snapshot)
         candidates.extend(hosp_cands)
 
-        for c in candidates:
-            self._candidates_index[c.candidate_id] = c
+        with self._lock:
+            for c in candidates:
+                self._candidates_index[c.candidate_id] = c
 
         # --------------------------------------------------------------
         # 3. BUILD EXPLAINABLE RECOMMENDATIONS
@@ -151,18 +156,26 @@ class DecisionEngine:
             reverse=True,
         )
 
-        for r in new_recs:
-            self._recommendations_index[r.recommendation_id] = r
+        with self._lock:
+            for r in new_recs:
+                self._recommendations_index[r.recommendation_id] = r
 
         return new_recs
 
     def get_recommendation(self, rec_id: str) -> Optional[OptimizationRecommendation]:
         """Retrieve a cached recommendation by its ID."""
-        return self._recommendations_index.get(rec_id)
+        with self._lock:
+            return self._recommendations_index.get(rec_id)
+
+    def get_all_recommendations(self) -> List[OptimizationRecommendation]:
+        """Retrieve all currently cached recommendations."""
+        with self._lock:
+            return list(self._recommendations_index.values())
 
     def get_candidate(self, cand_id: str) -> Optional[OptimizationCandidate]:
         """Retrieve a generated candidate (valid or rejected) by its ID."""
-        return self._candidates_index.get(cand_id)
+        with self._lock:
+            return self._candidates_index.get(cand_id)
 
     def simulate_recommendation(
         self,
@@ -299,12 +312,15 @@ class DecisionEngine:
         recs = self.evaluate_state(sim_instance)
         snapshot = self._last_snapshot
 
+        with self._lock:
+            all_recs = list(self._recommendations_index.values())
+
         pending = [
-            r for r in self._recommendations_index.values()
+            r for r in all_recs
             if r.status in (RecommendationStatus.NEW, "ACTIVE", RecommendationStatus.REVIEWED)
         ]
         stale = [
-            r for r in self._recommendations_index.values()
+            r for r in all_recs
             if r.status in (RecommendationStatus.EXPIRED, RecommendationStatus.OBSOLETE)
         ]
 
@@ -364,8 +380,9 @@ class DecisionEngine:
         outcomes = self.outcome_store.get_outcomes(limit=500)
 
         # Count stale / expired
-        stale_c = sum(1 for r in self._recommendations_index.values() if r.status == RecommendationStatus.OBSOLETE)
-        expired_c = sum(1 for r in self._recommendations_index.values() if r.status == RecommendationStatus.EXPIRED)
+        with self._lock:
+            stale_c = sum(1 for r in self._recommendations_index.values() if r.status == RecommendationStatus.OBSOLETE)
+            expired_c = sum(1 for r in self._recommendations_index.values() if r.status == RecommendationStatus.EXPIRED)
 
         rb_success_rate = 1.0
         if perf.rollback_attempts > 0:
@@ -411,8 +428,9 @@ class DecisionEngine:
             succ_rate = self.policy_engine.performance.successful_actions / total_auto
 
         # Stale rate
-        total_recs = max(1, len(self._recommendations_index))
-        stale_recs = sum(1 for r in self._recommendations_index.values() if r.status in (RecommendationStatus.OBSOLETE, RecommendationStatus.EXPIRED))
+        with self._lock:
+            total_recs = max(1, len(self._recommendations_index))
+            stale_recs = sum(1 for r in self._recommendations_index.values() if r.status in (RecommendationStatus.OBSOLETE, RecommendationStatus.EXPIRED))
         stale_pct = (stale_recs / total_recs) * 100.0
 
         # Mean benefit ratio

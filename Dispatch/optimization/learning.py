@@ -305,13 +305,16 @@ class CalibrationAnalyzer:
 # OUTCOME PERSISTENCE STORE
 # ----------------------------------------------------------------------
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
 class OutcomeStore:
     """
     Thread-safe atomic persistence store for OutcomeRecords.
     Saves to data/optimization/learning/outcomes.json.
     """
 
-    DEFAULT_STORE_PATH = Path("/home/glitchedpotato/RAAH/data/optimization/learning/outcomes.json")
+    DEFAULT_STORE_PATH = _REPO_ROOT / "data" / "optimization" / "learning" / "outcomes.json"
 
     def __init__(self, store_path: Optional[Path] = None):
         self.store_path = store_path or self.DEFAULT_STORE_PATH

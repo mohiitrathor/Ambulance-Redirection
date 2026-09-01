@@ -5,13 +5,13 @@
     "run_id": "api_run_001",
     "start_sim_time": 0,
     "end_sim_time": 5,
-    "wall_clock_duration_seconds": 0.1,
+    "wall_clock_duration_seconds": 0.0976,
     "event_count": 3,
     "snapshot_count": 4,
     "completion_status": "COMPLETED",
     "deterministic_seed": 999,
     "replay_format_version": "1.0.0",
-    "created_at": "2026-09-01T16:30:04.882985+00:00"
+    "created_at": "2026-09-01T16:56:00.478414+00:00"
   },
   "scenario_definition": {
     "scenario_id": "SCEN_API_TEST",
@@ -42,7 +42,7 @@
     "scheduled_redirections": [],
     "scheduled_hospital_events": [],
     "metadata": {},
-    "created_at": "2026-09-01T16:30:04.478064+00:00"
+    "created_at": "2026-09-01T16:56:00.068747+00:00"
   },
   "events": [
     {
@@ -59,7 +59,7 @@
         "tick_minutes": 1.0,
         "seed": 999
       },
-      "timestamp": "2026-09-01T16:30:04.835380+00:00"
+      "timestamp": "2026-09-01T16:56:00.432535+00:00"
     },
     {
       "event_id": 2,
@@ -77,7 +77,7 @@
         "hospital_id": "HOSP_084",
         "eta_minutes": 34.52
       },
-      "timestamp": "2026-09-01T16:30:04.864066+00:00"
+      "timestamp": "2026-09-01T16:56:00.461996+00:00"
     },
     {
       "event_id": 3,
@@ -91,7 +91,7 @@
         "final_sim_time": 5,
         "total_events": 2
       },
-      "timestamp": "2026-09-01T16:30:04.882973+00:00"
+      "timestamp": "2026-09-01T16:56:00.478404+00:00"
     }
   ],
   "snapshots": [
@@ -16715,7 +16715,7 @@
           "status": "SURPLUS"
         }
       },
-      "timestamp": "2026-09-01T16:30:04.839567+00:00"
+      "timestamp": "2026-09-01T16:56:00.436705+00:00"
     },
     {
       "snapshot_id": 2,
@@ -33428,7 +33428,7 @@
           "status": "SURPLUS"
         }
       },
-      "timestamp": "2026-09-01T16:30:04.868662+00:00"
+      "timestamp": "2026-09-01T16:56:00.466702+00:00"
     },
     {
       "snapshot_id": 3,
@@ -50137,7 +50137,7 @@
           "status": "SURPLUS"
         }
       },
-      "timestamp": "2026-09-01T16:30:04.873288+00:00"
+      "timestamp": "2026-09-01T16:56:00.471365+00:00"
     },
     {
       "snapshot_id": 4,
@@ -66846,7 +66846,7 @@
           "status": "SURPLUS"
         }
       },
-      "timestamp": "2026-09-01T16:30:04.882932+00:00"
+      "timestamp": "2026-09-01T16:56:00.478359+00:00"
     }
   ],
   "final_summary": {

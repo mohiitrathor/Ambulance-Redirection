@@ -30,10 +30,13 @@ def _safe_serialize(obj):
     return str(obj)
 
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
 class ExecutionAuditStore:
     """Thread-safe, atomic JSON store for optimization execution audit records."""
 
-    DEFAULT_STORE_PATH = Path("/home/glitchedpotato/RAAH/data/optimization/execution_audit.json")
+    DEFAULT_STORE_PATH = _REPO_ROOT / "data" / "optimization" / "execution_audit.json"
 
     def __init__(self, store_path: Optional[Path] = None):
         self.store_path = store_path or self.DEFAULT_STORE_PATH

@@ -111,11 +111,14 @@ class RegressionReport:
         }
 
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
 class RegressionStore:
     """Manages persistence of regression baselines and run results."""
 
     def __init__(self, base_dir: Optional[str] = None):
-        self.base_dir = Path(base_dir or "/home/glitchedpotato/RAAH/data/regression")
+        self.base_dir = Path(base_dir or (_REPO_ROOT / "data" / "regression"))
         self.runs_dir = self.base_dir / "runs"
         self.baseline_file = self.base_dir / "baseline.json"
         self.runs_dir.mkdir(parents=True, exist_ok=True)
