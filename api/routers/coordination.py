@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import List
 
 from api.dependencies import manager
+from api.auth import AuthenticatedUser, Permission, require_permission
 from api.schemas.coordination import (
     CoverageSummaryResponse,
     ZoneCoverageResponse,
@@ -81,7 +82,10 @@ def get_reposition_recommendations():
     response_model=RepositionResponse,
     summary="Execute an approved ambulance repositioning movement",
 )
-def execute_reposition(req: RepositionExecuteRequest):
+def execute_reposition(
+    req: RepositionExecuteRequest,
+    user: AuthenticatedUser = Depends(require_permission(Permission.APPROVE_FLEET_REPOSITION)),
+):
     """
     Initiate an ambulance repositioning movement toward a staging post in a deficit zone.
     Validates availability, ensures source zone coverage protection, generates
@@ -94,7 +98,7 @@ def execute_reposition(req: RepositionExecuteRequest):
                 ambulance_id=req.ambulance_id,
                 target_lat=req.target_lat,
                 target_lon=req.target_lon,
-                reason=req.reason or "COVERAGE_DEFICIT",
+                reason=req.reason or f"COVERAGE_DEFICIT (approved by {user.username})",
             )
         except KeyError as err:
             raise HTTPException(status_code=404, detail=str(err))
@@ -122,14 +126,17 @@ def execute_reposition(req: RepositionExecuteRequest):
     response_model=RepositionResponse,
     summary="Cancel active ambulance repositioning",
 )
-def cancel_reposition(ambulance_id: str):
+def cancel_reposition(
+    ambulance_id: str,
+    user: AuthenticatedUser = Depends(require_permission(Permission.APPROVE_FLEET_REPOSITION)),
+):
     """
     Halt an actively repositioning ambulance, remove its route, and restore its status to AVAILABLE.
     """
     with manager.lock:
         sim = manager.simulator
         try:
-            res = sim.cancel_reposition(ambulance_id=ambulance_id, reason="CANCELLED_BY_OPERATOR")
+            res = sim.cancel_reposition(ambulance_id=ambulance_id, reason=f"CANCELLED_BY_OPERATOR ({user.username})")
         except KeyError as err:
             raise HTTPException(status_code=404, detail=str(err))
         except ValueError as err:
@@ -168,7 +175,10 @@ def get_hospital_projections():
     response_model=MCIDeclareResponse,
     summary="Declare a Multi-Casualty Incident and trigger coordinated triage & dispatch",
 )
-def declare_mci(request: MCIDeclareRequest):
+def declare_mci(
+    request: MCIDeclareRequest,
+    user: AuthenticatedUser = Depends(require_permission(Permission.MCI_CONTROL)),
+):
     """
     Declare a major emergency scene, generate child casualties, run individual ML triage,
     and execute atomic multi-ambulance and balanced-hospital allocation.

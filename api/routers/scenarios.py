@@ -6,7 +6,7 @@ Provides endpoints for scenario registration, deterministic execution,
 and standalone operational replay querying and playback inspection.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List, Optional, Dict, Any
 import uuid
 
@@ -23,6 +23,7 @@ from Dispatch.scenarios import (
     ScenarioStore,
     ReplayStore,
 )
+from api.auth import AuthenticatedUser, Permission, require_permission
 from api.schemas.scenarios import (
     ScenarioCreateRequest,
     ScenarioResponse,
@@ -74,7 +75,10 @@ def list_scenarios():
     response_model=ScenarioResponse,
     summary="Create or update a deterministic scenario definition",
 )
-def create_scenario(req: ScenarioCreateRequest):
+def create_scenario(
+    req: ScenarioCreateRequest,
+    user: AuthenticatedUser = Depends(require_permission(Permission.RUN_DRILLS)),
+):
     sid = req.scenario_id or f"SCEN_{uuid.uuid4().hex[:6]}"
     cfg_data = req.config.model_dump() if req.config else {}
     config = ScenarioConfig.from_dict(cfg_data)
@@ -129,7 +133,11 @@ def get_scenario(scenario_id: str):
     response_model=RunMetadataResponse,
     summary="Execute a deterministic scenario and persist replay archive",
 )
-def run_scenario(scenario_id: str, req: Optional[ScenarioRunRequest] = None):
+def run_scenario(
+    scenario_id: str,
+    req: Optional[ScenarioRunRequest] = None,
+    user: AuthenticatedUser = Depends(require_permission(Permission.RUN_DRILLS)),
+):
     scen = scenario_store.get(scenario_id)
     if not scen:
         raise HTTPException(status_code=404, detail=f"Scenario '{scenario_id}' not found.")

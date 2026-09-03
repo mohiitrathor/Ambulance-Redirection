@@ -1,0 +1,143 @@
+"""
+RAAH Lightweight Operational Metrics Engine
+===========================================
+
+Provides a high-performance, thread-safe in-memory metrics collector for
+operational throughput, latency histograms, error rates, and queue telemetry.
+Zero heavyweight external dependencies.
+"""
+
+import time
+import threading
+from typing import Dict, Any, List, Optional
+from datetime import datetime, timezone
+
+
+class MetricsCollector:
+    """
+    Thread-safe operational telemetry and metrics aggregator.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._started_at = datetime.now(timezone.utc).isoformat()
+
+        # HTTP Request metrics
+        self._http_requests_total: int = 0
+        self._http_responses_by_status: Dict[int, int] = {}
+        self._http_latency_sum_ms: float = 0.0
+        self._http_latency_count: int = 0
+        self._http_recent_latencies: List[float] = []
+
+        # Dispatch execution metrics
+        self._dispatch_calls_total: int = 0
+        self._dispatch_latency_sum_ms: float = 0.0
+        self._dispatch_errors_total: int = 0
+
+        # Persistence & Checkpoint metrics
+        self._checkpoints_total: int = 0
+        self._checkpoint_duration_sum_ms: float = 0.0
+        self._persistence_errors_total: int = 0
+
+        # System failures & retries
+        self._worker_restarts_total: int = 0
+        self._retries_total: int = 0
+
+    def record_http_request(self, method: str, path: str, status_code: int, duration_ms: float):
+        """Record an incoming HTTP request and response duration."""
+        with self._lock:
+            self._http_requests_total += 1
+            self._http_responses_by_status[status_code] = (
+                self._http_responses_by_status.get(status_code, 0) + 1
+            )
+            self._http_latency_sum_ms += duration_ms
+            self._http_latency_count += 1
+
+            self._http_recent_latencies.append(duration_ms)
+            if len(self._http_recent_latencies) > 500:
+                self._http_recent_latencies.pop(0)
+
+    def record_dispatch(self, duration_ms: float, success: bool = True):
+        """Record a dispatch incident calculation."""
+        with self._lock:
+            self._dispatch_calls_total += 1
+            self._dispatch_latency_sum_ms += duration_ms
+            if not success:
+                self._dispatch_errors_total += 1
+
+    def record_checkpoint(self, duration_ms: float, success: bool = True):
+        """Record a durable state checkpoint operation."""
+        with self._lock:
+            self._checkpoints_total += 1
+            self._checkpoint_duration_sum_ms += duration_ms
+            if not success:
+                self._persistence_errors_total += 1
+
+    def record_persistence_error(self):
+        """Record a persistence layer failure."""
+        with self._lock:
+            self._persistence_errors_total += 1
+
+    def record_retry(self):
+        """Record an automatic backoff retry attempt."""
+        with self._lock:
+            self._retries_total += 1
+
+    def record_worker_restart(self):
+        """Record an automated or manual worker restart."""
+        with self._lock:
+            self._worker_restarts_total += 1
+
+    def get_snapshot(self) -> Dict[str, Any]:
+        """Generate a complete operational metrics snapshot dictionary."""
+        with self._lock:
+            mean_http_lat = (
+                self._http_latency_sum_ms / self._http_latency_count
+                if self._http_latency_count > 0
+                else 0.0
+            )
+            mean_disp_lat = (
+                self._dispatch_latency_sum_ms / self._dispatch_calls_total
+                if self._dispatch_calls_total > 0
+                else 0.0
+            )
+            mean_chk_lat = (
+                self._checkpoint_duration_sum_ms / self._checkpoints_total
+                if self._checkpoints_total > 0
+                else 0.0
+            )
+
+            # Calculate p95 of recent HTTP latencies
+            p95_http = 0.0
+            if self._http_recent_latencies:
+                sorted_lats = sorted(self._http_recent_latencies)
+                idx = int(len(sorted_lats) * 0.95)
+                p95_http = sorted_lats[min(idx, len(sorted_lats) - 1)]
+
+            return {
+                "uptime_started_at": self._started_at,
+                "http": {
+                    "requests_total": self._http_requests_total,
+                    "responses_by_status": dict(self._http_responses_by_status),
+                    "mean_latency_ms": round(mean_http_lat, 2),
+                    "p95_latency_ms": round(p95_http, 2),
+                },
+                "dispatch": {
+                    "calls_total": self._dispatch_calls_total,
+                    "mean_latency_ms": round(mean_disp_lat, 2),
+                    "errors_total": self._dispatch_errors_total,
+                },
+                "persistence": {
+                    "checkpoints_total": self._checkpoints_total,
+                    "mean_checkpoint_ms": round(mean_chk_lat, 2),
+                    "errors_total": self._persistence_errors_total,
+                },
+                "resilience": {
+                    "retries_total": self._retries_total,
+                    "worker_restarts_total": self._worker_restarts_total,
+                },
+            }
+
+
+# Global singleton instance
+metrics_collector = MetricsCollector()

@@ -63,6 +63,13 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
             # Attach correlation ID to response headers
             response.headers["X-Request-ID"] = req_id
 
+            # Record operational metrics
+            try:
+                from api.observability.metrics import metrics_collector
+                metrics_collector.record_http_request(method, path, response.status_code, duration_ms)
+            except Exception:
+                pass
+
             # Skip high-frequency static asset noise in structured access log if desired
             if not path.startswith("/static"):
                 logger.info(

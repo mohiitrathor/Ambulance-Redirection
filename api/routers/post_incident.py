@@ -125,8 +125,14 @@ def get_regression_baseline():
     return baseline
 
 
+from api.auth import AuthenticatedUser, Permission, require_permission
+
+
 @router.post("/regression/baseline/create")
-def create_regression_baseline(req: CreateBaselineRequest):
+def create_regression_baseline(
+    req: CreateBaselineRequest,
+    user: AuthenticatedUser = Depends(require_permission(Permission.RUN_DRILLS)),
+):
     """Explicitly establish or update the official regression baseline."""
     baseline = regression_suite.create_baseline(description=req.description)
     return {
@@ -139,7 +145,10 @@ def create_regression_baseline(req: CreateBaselineRequest):
 
 
 @router.post("/regression/run", response_model=RegressionReportResponse)
-def run_regression_suite(req: RegressionRunRequest):
+def run_regression_suite(
+    req: RegressionRunRequest,
+    user: AuthenticatedUser = Depends(require_permission(Permission.RUN_DRILLS)),
+):
     """Run all standard regression drill cases sequentially against established baseline."""
     report = regression_suite.run_suite(run_id=req.run_id)
     return report.to_dict()

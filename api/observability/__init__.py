@@ -15,6 +15,10 @@ from api.observability.middleware import (
     get_request_id,
     set_request_id,
 )
+from api.observability.metrics import (
+    MetricsCollector,
+    metrics_collector,
+)
 
 __all__ = [
     "StructuredJsonFormatter",
@@ -22,4 +26,6 @@ __all__ = [
     "ObservabilityMiddleware",
     "get_request_id",
     "set_request_id",
+    "MetricsCollector",
+    "metrics_collector",
 ]

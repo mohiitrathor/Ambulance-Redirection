@@ -8,9 +8,17 @@ operator approval/rejection workflows, authoritative executions, and audit recor
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
 from api.dependencies import manager
+from api.auth import (
+    AuthenticatedUser,
+    Role,
+    Permission,
+    get_current_user,
+    require_permission,
+    require_any_role,
+)
 from api.schemas.optimization import (
     OperationalSnapshotResponse,
     OptimizationRecommendationResponse,
@@ -121,18 +129,48 @@ def simulate_recommendation(body: SimulateRecommendationRequest):
 def approve_recommendation(
     recommendation_id: str,
     body: Optional[ApproveRecommendationRequest] = None,
+    user: AuthenticatedUser = Depends(get_current_user),
 ):
     """
     Operator approval endpoint. Revalidates current state, rechecks hard safety
     constraints, and authoritatively executes the action through Simulator coordination.
     """
     req = body or ApproveRecommendationRequest()
+    rec = decision_engine.get_recommendation(recommendation_id)
+    if not rec:
+        with manager.lock:
+            sim = manager.simulator
+            decision_engine.evaluate_state(sim)
+            rec = decision_engine.get_recommendation(recommendation_id)
+
+    if rec:
+        if rec.decision_type == "FLEET_REPOSITION":
+            if not user.has_permission(Permission.APPROVE_FLEET_REPOSITION):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Forbidden: FLEET_REPOSITION requires APPROVE_FLEET_REPOSITION permission ({user.role.value} not authorized).",
+                )
+        elif rec.decision_type == "HOSPITAL_DIVERSION":
+            if not user.has_permission(Permission.APPROVE_HOSPITAL_DIVERSION):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Forbidden: HOSPITAL_DIVERSION requires APPROVE_HOSPITAL_DIVERSION permission ({user.role.value} not authorized).",
+                )
+    else:
+        if not (user.has_permission(Permission.APPROVE_FLEET_REPOSITION) or user.has_permission(Permission.APPROVE_HOSPITAL_DIVERSION)):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Forbidden: Insufficient privileges to approve recommendations ({user.role.value} not authorized).",
+            )
+
+    op_id = req.operator_id or f"{user.username} ({user.role.value})"
+
     with manager.lock:
         sim = manager.simulator
         res = decision_engine.approve_recommendation(
             rec_id=recommendation_id,
             sim_instance=sim,
-            operator_id=req.operator_id,
+            operator_id=op_id,
             operator_note=req.operator_note,
         )
 
@@ -153,15 +191,18 @@ def approve_recommendation(
 def reject_recommendation(
     recommendation_id: str,
     body: Optional[RejectRecommendationRequest] = None,
+    user: AuthenticatedUser = Depends(get_current_user),
 ):
     """
     Explicitly dismiss an advisory recommendation with operator audit notes.
     """
     req = body or RejectRecommendationRequest()
+    op_id = req.operator_id or f"{user.username} ({user.role.value})"
+
     with manager.lock:
         rec = decision_engine.reject_recommendation(
             rec_id=recommendation_id,
-            operator_id=req.operator_id,
+            operator_id=op_id,
             reason=req.reason,
         )
 
@@ -296,14 +337,19 @@ def get_policy_config():
     response_model=ChangePolicyModeResponse,
     summary="Change policy autonomy mode",
 )
-def set_policy_mode(body: ChangePolicyModeRequest):
+def set_policy_mode(
+    body: ChangePolicyModeRequest,
+    user: AuthenticatedUser = Depends(require_permission(Permission.CHANGE_POLICY_MODE)),
+):
     """
     Operator-initiated transition between OFF, ADVISORY, and GUARDED modes.
+    Restricted to Supervisors and Administrators.
     """
+    op_id = body.operator_id or f"{user.username} ({user.role.value})"
     try:
         res = decision_engine.policy_engine.set_mode(
             new_mode=body.mode,
-            operator_id=body.operator_id,
+            operator_id=op_id,
             reason=body.reason,
         )
         return res
@@ -316,18 +362,23 @@ def set_policy_mode(body: ChangePolicyModeRequest):
     response_model=KillSwitchResponse,
     summary="Engage or release emergency kill-switch",
 )
-def toggle_kill_switch(body: KillSwitchRequest):
+def toggle_kill_switch(
+    body: KillSwitchRequest,
+    user: AuthenticatedUser = Depends(require_permission(Permission.KILL_SWITCH)),
+):
     """
     Emergency kill-switch that halts all autonomous executions immediately.
+    Restricted to Supervisors, Medical Controllers, and Administrators.
     """
+    op_id = body.operator_id or f"{user.username} ({user.role.value})"
     if body.action.upper() == "ENGAGE":
         return decision_engine.policy_engine.activate_kill_switch(
-            operator_id=body.operator_id,
+            operator_id=op_id,
             reason=body.reason,
         )
     else:
         return decision_engine.policy_engine.deactivate_kill_switch(
-            operator_id=body.operator_id,
+            operator_id=op_id,
             reason=body.reason,
         )
 
@@ -543,15 +594,18 @@ def compare_policies(body: ComparePoliciesRequest):
 def approve_learning_recommendation(
     recommendation_id: str,
     body: ApproveLearningRecRequest,
+    user: AuthenticatedUser = Depends(require_permission(Permission.APPROVE_POLICY_CHANGE)),
 ):
     """
     Validate safety bounds, update policy parameter, create a new immutable
     policy version, and mark recommendation APPROVED.
+    Restricted to Supervisors and Administrators.
     """
+    op_id = body.operator_id or f"{user.username} ({user.role.value})"
     try:
         new_cfg, rec = decision_engine.approve_learning_recommendation(
             recommendation_id=recommendation_id,
-            operator_id=body.operator_id,
+            operator_id=op_id,
         )
         return {
             "recommendation": rec.to_dict(),
@@ -569,14 +623,17 @@ def approve_learning_recommendation(
 def reject_learning_recommendation(
     recommendation_id: str,
     body: RejectLearningRecRequest,
+    user: AuthenticatedUser = Depends(require_permission(Permission.APPROVE_POLICY_CHANGE)),
 ):
     """
     Dismiss an adaptive policy recommendation with an operator rationale.
+    Restricted to Supervisors and Administrators.
     """
+    op_id = body.operator_id or f"{user.username} ({user.role.value})"
     try:
         rec = decision_engine.reject_learning_recommendation(
             recommendation_id=recommendation_id,
-            operator_id=body.operator_id,
+            operator_id=op_id,
             reason=body.reason,
         )
         return rec.to_dict()
@@ -604,15 +661,18 @@ def get_policy_history():
 def rollback_policy_version(
     policy_version: str,
     body: RollbackPolicyVersionRequest,
+    user: AuthenticatedUser = Depends(require_permission(Permission.ROLLBACK_POLICY)),
 ):
     """
     Roll back to a previous policy configuration by generating a NEW immutable
     version that restores the target parameters.
+    Restricted to Supervisors and Administrators.
     """
+    op_id = body.operator_id or f"{user.username} ({user.role.value})"
     try:
         new_cfg = decision_engine.rollback_policy(
             target_version=policy_version,
-            operator_id=body.operator_id,
+            operator_id=op_id,
             reason=body.reason,
         )
         return new_cfg.to_dict()

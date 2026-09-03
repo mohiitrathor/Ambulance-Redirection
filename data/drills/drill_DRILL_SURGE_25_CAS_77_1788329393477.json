@@ -1,0 +1,101 @@
+{
+  "scenario_id": "DRILL_SURGE_25_CAS_77",
+  "run_id": "drill_DRILL_SURGE_25_CAS_77_1788329393477",
+  "drill_name": "CASUALTY_SURGE",
+  "seed": 77,
+  "casualty_count": 25,
+  "total_simulation_minutes": 6,
+  "incidents_created": 25,
+  "incidents_dispatched": 25,
+  "incidents_waiting": 0,
+  "incidents_arrived": 25,
+  "ambulance_utilization": 2.4,
+  "hospital_saturation_events": 3,
+  "icu_saturation_events": 18,
+  "max_concurrent_en_route": 24,
+  "max_concurrent_mci": 1,
+  "average_response_eta": 3.62,
+  "average_transport_eta": 3.62,
+  "unresolved_incidents": 0,
+  "unresolved_mcis": 0,
+  "simulation_runtime_ms": 676.76,
+  "deterministic_hash": "de8dcfc83bdb94d03cb59566",
+  "metrics": {
+    "fleet_metrics": {
+      "total_ambulances": 1000,
+      "peak_en_route": 24,
+      "peak_repositioning": 0,
+      "utilization_ratio_pct": 2.4,
+      "dispatch_success_ratio_pct": 100.0,
+      "waiting_for_ambulance_count": 0,
+      "average_dispatch_eta_minutes": 3.62
+    },
+    "incident_metrics": {
+      "total_casualties": 25,
+      "dispatched_casualties": 25,
+      "waiting_casualties": 0,
+      "arrived_casualties": 25,
+      "unresolved_casualties": 0,
+      "average_transport_eta": 3.62,
+      "max_transport_eta": 4.97
+    },
+    "hospital_metrics": {
+      "hospitals_used_count": 25,
+      "peak_projected_utilization": 1.0,
+      "hospitals_reaching_full_count": 3,
+      "hospitals_reaching_icu_full_count": 18,
+      "hospital_load_distribution": {
+        "HOSP_064": 2,
+        "HOSP_271": 2,
+        "HOSP_136": 2,
+        "HOSP_263": 2,
+        "HOSP_289": 2,
+        "HOSP_256": 2,
+        "HOSP_080": 2,
+        "HOSP_116": 2,
+        "HOSP_106": 2,
+        "HOSP_092": 2,
+        "HOSP_270": 2,
+        "HOSP_149": 2,
+        "HOSP_296": 2,
+        "HOSP_009": 2,
+        "HOSP_084": 2,
+        "HOSP_076": 2,
+        "HOSP_251": 2,
+        "HOSP_003": 2,
+        "HOSP_156": 2,
+        "HOSP_029": 2,
+        "HOSP_043": 2,
+        "HOSP_082": 2,
+        "HOSP_245": 2,
+        "HOSP_198": 2,
+        "HOSP_001": 2
+      },
+      "max_simultaneous_incoming_reservations": 24
+    },
+    "mci_metrics": {
+      "total_mcis": 1,
+      "peak_concurrent_mcis": 1,
+      "unresolved_mci_casualties": 0
+    },
+    "resilience_score": {
+      "overall": 91.3,
+      "fleet_score": 100.0,
+      "dispatch_score": 100.0,
+      "hospital_score": 94.0,
+      "evacuation_score": 100.0,
+      "saturation_penalty": 15.0,
+      "unresolved_penalty": 0.0
+    }
+  },
+  "resilience_score": {
+    "overall": 91.3,
+    "fleet_score": 100.0,
+    "dispatch_score": 100.0,
+    "hospital_score": 94.0,
+    "evacuation_score": 100.0,
+    "saturation_penalty": 15.0,
+    "unresolved_penalty": 0.0
+  },
+  "created_at": "2026-09-02T06:09:54.153839+00:00"
+}

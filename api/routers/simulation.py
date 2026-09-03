@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 
 from api.dependencies import manager
 from simulation_output import SimulationOutput
@@ -7,6 +7,13 @@ from api.schemas.simulation import (
     RealtimeStartRequest,
     RealtimeStatusResponse,
     RealtimeControlResponse,
+)
+from api.auth import (
+    AuthenticatedUser,
+    Role,
+    Permission,
+    require_permission,
+    require_any_role,
 )
 
 
@@ -38,6 +45,7 @@ def simulation_tick(
         le=60,
         description="Number of minutes to advance.",
     ),
+    user: AuthenticatedUser = Depends(require_any_role(Role.SUPERVISOR, Role.ADMINISTRATOR)),
 ):
 
     if manager.is_realtime_running:
@@ -75,10 +83,13 @@ def simulation_tick(
     description=(
         "Safely stops any active real-time simulation thread, "
         "destroys the current Simulator, and creates a fresh "
-        "instance with clean world state at time = 0."
+        "instance with clean world state at time = 0. "
+        "Strictly restricted to Administrators."
     ),
 )
-def simulation_reset():
+def simulation_reset(
+    user: AuthenticatedUser = Depends(require_permission(Permission.RESET_SIMULATION)),
+):
 
     manager.reset()
 
@@ -104,6 +115,7 @@ def simulation_reset():
 )
 def simulation_realtime_start(
     request: RealtimeStartRequest = RealtimeStartRequest(),
+    user: AuthenticatedUser = Depends(require_any_role(Role.SUPERVISOR, Role.ADMINISTRATOR)),
 ):
 
     try:
@@ -137,7 +149,9 @@ def simulation_realtime_start(
         "Idempotent: safe to call if already stopped."
     ),
 )
-def simulation_realtime_stop():
+def simulation_realtime_stop(
+    user: AuthenticatedUser = Depends(require_any_role(Role.SUPERVISOR, Role.ADMINISTRATOR)),
+):
 
     return manager.stop_realtime()
 
@@ -156,6 +170,29 @@ def simulation_realtime_stop():
         "processed ticks, and error state."
     ),
 )
-def simulation_realtime_status():
-
+def simulation_realtime_status(
+    user: AuthenticatedUser = Depends(require_permission(Permission.VIEW_LIVE)),
+):
     return manager.get_realtime_status()
+
+
+# ==============================================================
+# POST /simulation/realtime/restart
+# ==============================================================
+
+@router.post(
+    "/realtime/restart",
+    response_model=RealtimeControlResponse,
+    summary="Restart real-time simulation after failure",
+    description=(
+        "Safely recovers and restarts the real-time simulation worker "
+        "if it crashed or entered an ERRORED state."
+    ),
+)
+def simulation_realtime_restart(
+    user: AuthenticatedUser = Depends(require_any_role(Role.SUPERVISOR, Role.ADMINISTRATOR)),
+):
+    try:
+        return manager.restart_realtime()
+    except Exception as err:
+        raise HTTPException(status_code=400, detail=str(err))

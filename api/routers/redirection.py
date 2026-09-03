@@ -1,10 +1,11 @@
 from dataclasses import asdict
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
 from api.dependencies import manager
 from redirection_engine import check_live_redirection
+from api.auth import AuthenticatedUser, Permission, require_permission
 from api.schemas.redirection import (
     RedirectionResult,
     DecisionRecord,
@@ -99,12 +100,13 @@ def check_redirection(incident_id: int):
 def apply_redirection(
     incident_id: int,
     request: Optional[ManualRedirectionRequest] = None,
+    user: AuthenticatedUser = Depends(require_permission(Permission.MANUAL_REROUTE)),
 ):
     sim = manager.simulator
     lock = manager.lock
 
     target_hosp = request.target_hospital_id if request else None
-    reason = request.reason if request and request.reason else "Operator manual override"
+    reason = request.reason if request and request.reason else f"Operator manual override by {user.username} ({user.role.value})"
 
     with lock:
         try:

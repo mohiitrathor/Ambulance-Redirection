@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  raah-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: raah:latest
+    container_name: raah-dispatch-service
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - RAAH_ENVIRONMENT=production
+      - RAAH_HOST=0.0.0.0
+      - RAAH_PORT=8000
+      - RAAH_LOG_LEVEL=INFO
+      - RAAH_LOG_FORMAT=json
+      - RAAH_AUTH_ENFORCED=true
+      - RAAH_DEV_AUTH_FALLBACK=false
+      - RAAH_JWT_SECRET_KEY=${RAAH_JWT_SECRET_KEY:?RAAH_JWT_SECRET_KEY must be set in production}
+      - RAAH_CORS_ORIGINS=${RAAH_CORS_ORIGINS:-http://localhost:8000}
+      - RAAH_PERSISTENCE_ENABLED=true
+      - RAAH_CHECKPOINT_INTERVAL_SECONDS=30.0
+    volumes:
+      - raah-data:/app/data
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 10s
+
+volumes:
+  raah-data:
+    driver: local

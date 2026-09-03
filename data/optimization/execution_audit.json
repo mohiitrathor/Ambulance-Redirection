@@ -1512,5 +1512,804 @@
     "resulting_entity_ids": {
       "ambulance_id": "AMB_0009"
     }
+  },
+  {
+    "execution_id": "EXEC_103B75AE5726",
+    "recommendation_id": "REC_TEST_DIVERSION_001",
+    "recommendation_type": "HOSPITAL_DIVERSION",
+    "operator_id": "OPERATOR_DISPATCHER",
+    "operator_note": null,
+    "execution_mode": "OPERATOR_APPROVED",
+    "policy_mode": "GUARDED",
+    "policy_decision": "AUTO_APPROVE",
+    "confidence": 1.0,
+    "policy_version": "1.0.0",
+    "policy_rules_evaluated": [],
+    "policy_rejection_reason": null,
+    "predicted_benefit": 0.0,
+    "actual_benefit": 0.0,
+    "outcome": "PENDING",
+    "rollback_of": null,
+    "kill_switch_state": false,
+    "requested_at": "2026-09-02T06:09:02.516710+00:00",
+    "approved_at": "2026-09-02T06:09:02.516710+00:00",
+    "executed_at": "2026-09-02T06:09:02.516710+00:00",
+    "state_hash_before": "d3583de6b51a810a0b6d",
+    "state_hash_after": "d3583de6b51a810a0b6d",
+    "action_parameters": {},
+    "execution_status": "OBSOLETE",
+    "failure_reason": "Stale state / constraint violation: Incident '10' no longer exists in simulation.",
+    "resulting_entity_ids": {
+      "recommended_hospital_id": "HOSP_001",
+      "incident_id": 10
+    }
+  },
+  {
+    "execution_id": "EXEC_3101BC4F8694",
+    "recommendation_id": "REC_API_01",
+    "recommendation_type": "FLEET_REPOSITION",
+    "operator_id": "OP_API",
+    "operator_note": "Testing API approval",
+    "execution_mode": "OPERATOR_APPROVED",
+    "policy_mode": "GUARDED",
+    "policy_decision": "AUTO_APPROVE",
+    "confidence": 1.0,
+    "policy_version": "1.0.0",
+    "policy_rules_evaluated": [],
+    "policy_rejection_reason": null,
+    "predicted_benefit": 0.0,
+    "actual_benefit": 0.0,
+    "outcome": "PENDING",
+    "rollback_of": null,
+    "kill_switch_state": false,
+    "requested_at": "2026-09-02T06:09:37.603940+00:00",
+    "approved_at": "2026-09-02T06:09:37.603940+00:00",
+    "executed_at": "2026-09-02T06:09:37.603940+00:00",
+    "state_hash_before": "09b75471db494f2baa2d",
+    "state_hash_after": "1e062a422945357f2c0d",
+    "action_parameters": {
+      "status": "REPOSITIONING",
+      "ambulance_id": "AMB_0004",
+      "origin_zone": "JAIPUR_WEST",
+      "target_zone": "JAIPUR_NORTH",
+      "target_coords": [
+        26.96,
+        75.785
+      ],
+      "route_distance_km": 18.244,
+      "eta_minutes": 21.89,
+      "route_waypoints": [
+        [
+          26.886701356232788,
+          75.67627479481924
+        ],
+        [
+          26.889879,
+          75.682004
+        ],
+        [
+          26.892834,
+          75.687867
+        ],
+        [
+          26.895767,
+          75.693743
+        ],
+        [
+          26.898886,
+          75.699508
+        ],
+        [
+          26.902367,
+          75.705055
+        ],
+        [
+          26.906311,
+          75.710323
+        ],
+        [
+          26.910721,
+          75.715311
+        ],
+        [
+          26.915499,
+          75.720078
+        ],
+        [
+          26.920468,
+          75.724731
+        ],
+        [
+          26.925405,
+          75.729402
+        ],
+        [
+          26.930093,
+          75.734224
+        ],
+        [
+          26.934364,
+          75.739296
+        ],
+        [
+          26.938132,
+          75.74467
+        ],
+        [
+          26.941418,
+          75.750334
+        ],
+        [
+          26.944335,
+          75.75622
+        ],
+        [
+          26.947069,
+          75.762216
+        ],
+        [
+          26.949838,
+          75.76819
+        ],
+        [
+          26.95284,
+          75.774026
+        ],
+        [
+          26.956211,
+          75.779638
+        ],
+        [
+          26.96,
+          75.785
+        ]
+      ]
+    },
+    "execution_status": "SUCCESS",
+    "failure_reason": null,
+    "resulting_entity_ids": {
+      "ambulance_id": "AMB_0004",
+      "target_zone": "JAIPUR_NORTH",
+      "donor_zone": "JAIPUR_CENTRAL",
+      "donor_avail_before": 50,
+      "donor_avail_after": 49
+    }
+  },
+  {
+    "execution_id": "REJ_D4952B49AEC0",
+    "recommendation_id": "REC_API_REJ_01",
+    "recommendation_type": "FLEET_REPOSITION",
+    "operator_id": "OP_API",
+    "operator_note": "Not needed right now",
+    "execution_mode": "OPERATOR_APPROVED",
+    "policy_mode": "GUARDED",
+    "policy_decision": "AUTO_APPROVE",
+    "confidence": 1.0,
+    "policy_version": "1.0.0",
+    "policy_rules_evaluated": [],
+    "policy_rejection_reason": null,
+    "predicted_benefit": 0.0,
+    "actual_benefit": 0.0,
+    "outcome": "PENDING",
+    "rollback_of": null,
+    "kill_switch_state": false,
+    "requested_at": "2026-09-02T06:09:37.625368+00:00",
+    "approved_at": "2026-09-02T06:09:37.625368+00:00",
+    "executed_at": "2026-09-02T06:09:37.625368+00:00",
+    "state_hash_before": "",
+    "state_hash_after": "",
+    "action_parameters": {},
+    "execution_status": "REJECTED",
+    "failure_reason": "Not needed right now",
+    "resulting_entity_ids": {
+      "ambulance_id": "AMB_0009"
+    }
+  },
+  {
+    "execution_id": "EXEC_CCD22B861BC6",
+    "recommendation_id": "REC_TEST_DIVERSION_001",
+    "recommendation_type": "HOSPITAL_DIVERSION",
+    "operator_id": "OPERATOR_DISPATCHER",
+    "operator_note": null,
+    "execution_mode": "OPERATOR_APPROVED",
+    "policy_mode": "GUARDED",
+    "policy_decision": "AUTO_APPROVE",
+    "confidence": 1.0,
+    "policy_version": "1.0.0",
+    "policy_rules_evaluated": [],
+    "policy_rejection_reason": null,
+    "predicted_benefit": 0.0,
+    "actual_benefit": 0.0,
+    "outcome": "PENDING",
+    "rollback_of": null,
+    "kill_switch_state": false,
+    "requested_at": "2026-09-02T06:38:51.514391+00:00",
+    "approved_at": "2026-09-02T06:38:51.514391+00:00",
+    "executed_at": "2026-09-02T06:38:51.514391+00:00",
+    "state_hash_before": "db37979ea9ca233a6676",
+    "state_hash_after": "db37979ea9ca233a6676",
+    "action_parameters": {},
+    "execution_status": "OBSOLETE",
+    "failure_reason": "Stale state / constraint violation: Incident '10' no longer exists in simulation.",
+    "resulting_entity_ids": {
+      "recommended_hospital_id": "HOSP_001",
+      "incident_id": 10
+    }
+  },
+  {
+    "execution_id": "EXEC_80D32BB71E60",
+    "recommendation_id": "REC_API_01",
+    "recommendation_type": "FLEET_REPOSITION",
+    "operator_id": "OP_API",
+    "operator_note": "Testing API approval",
+    "execution_mode": "OPERATOR_APPROVED",
+    "policy_mode": "GUARDED",
+    "policy_decision": "AUTO_APPROVE",
+    "confidence": 1.0,
+    "policy_version": "1.0.0",
+    "policy_rules_evaluated": [],
+    "policy_rejection_reason": null,
+    "predicted_benefit": 0.0,
+    "actual_benefit": 0.0,
+    "outcome": "PENDING",
+    "rollback_of": null,
+    "kill_switch_state": false,
+    "requested_at": "2026-09-02T06:39:33.761568+00:00",
+    "approved_at": "2026-09-02T06:39:33.761568+00:00",
+    "executed_at": "2026-09-02T06:39:33.761568+00:00",
+    "state_hash_before": "09b75471db494f2baa2d",
+    "state_hash_after": "1e062a422945357f2c0d",
+    "action_parameters": {
+      "status": "REPOSITIONING",
+      "ambulance_id": "AMB_0004",
+      "origin_zone": "JAIPUR_WEST",
+      "target_zone": "JAIPUR_NORTH",
+      "target_coords": [
+        26.96,
+        75.785
+      ],
+      "route_distance_km": 18.244,
+      "eta_minutes": 21.89,
+      "route_waypoints": [
+        [
+          26.886701356232788,
+          75.67627479481924
+        ],
+        [
+          26.889879,
+          75.682004
+        ],
+        [
+          26.892834,
+          75.687867
+        ],
+        [
+          26.895767,
+          75.693743
+        ],
+        [
+          26.898886,
+          75.699508
+        ],
+        [
+          26.902367,
+          75.705055
+        ],
+        [
+          26.906311,
+          75.710323
+        ],
+        [
+          26.910721,
+          75.715311
+        ],
+        [
+          26.915499,
+          75.720078
+        ],
+        [
+          26.920468,
+          75.724731
+        ],
+        [
+          26.925405,
+          75.729402
+        ],
+        [
+          26.930093,
+          75.734224
+        ],
+        [
+          26.934364,
+          75.739296
+        ],
+        [
+          26.938132,
+          75.74467
+        ],
+        [
+          26.941418,
+          75.750334
+        ],
+        [
+          26.944335,
+          75.75622
+        ],
+        [
+          26.947069,
+          75.762216
+        ],
+        [
+          26.949838,
+          75.76819
+        ],
+        [
+          26.95284,
+          75.774026
+        ],
+        [
+          26.956211,
+          75.779638
+        ],
+        [
+          26.96,
+          75.785
+        ]
+      ]
+    },
+    "execution_status": "SUCCESS",
+    "failure_reason": null,
+    "resulting_entity_ids": {
+      "ambulance_id": "AMB_0004",
+      "target_zone": "JAIPUR_NORTH",
+      "donor_zone": "JAIPUR_CENTRAL",
+      "donor_avail_before": 50,
+      "donor_avail_after": 49
+    }
+  },
+  {
+    "execution_id": "REJ_2DAD1A2C004B",
+    "recommendation_id": "REC_API_REJ_01",
+    "recommendation_type": "FLEET_REPOSITION",
+    "operator_id": "OP_API",
+    "operator_note": "Not needed right now",
+    "execution_mode": "OPERATOR_APPROVED",
+    "policy_mode": "GUARDED",
+    "policy_decision": "AUTO_APPROVE",
+    "confidence": 1.0,
+    "policy_version": "1.0.0",
+    "policy_rules_evaluated": [],
+    "policy_rejection_reason": null,
+    "predicted_benefit": 0.0,
+    "actual_benefit": 0.0,
+    "outcome": "PENDING",
+    "rollback_of": null,
+    "kill_switch_state": false,
+    "requested_at": "2026-09-02T06:39:33.805032+00:00",
+    "approved_at": "2026-09-02T06:39:33.805032+00:00",
+    "executed_at": "2026-09-02T06:39:33.805032+00:00",
+    "state_hash_before": "",
+    "state_hash_after": "",
+    "action_parameters": {},
+    "execution_status": "REJECTED",
+    "failure_reason": "Not needed right now",
+    "resulting_entity_ids": {
+      "ambulance_id": "AMB_0009"
+    }
+  },
+  {
+    "execution_id": "EXEC_05F7E8983757",
+    "recommendation_id": "REC_TEST_DIVERSION_001",
+    "recommendation_type": "HOSPITAL_DIVERSION",
+    "operator_id": "OPERATOR_DISPATCHER",
+    "operator_note": null,
+    "execution_mode": "OPERATOR_APPROVED",
+    "policy_mode": "GUARDED",
+    "policy_decision": "AUTO_APPROVE",
+    "confidence": 1.0,
+    "policy_version": "1.0.0",
+    "policy_rules_evaluated": [],
+    "policy_rejection_reason": null,
+    "predicted_benefit": 0.0,
+    "actual_benefit": 0.0,
+    "outcome": "PENDING",
+    "rollback_of": null,
+    "kill_switch_state": false,
+    "requested_at": "2026-09-03T05:44:20.323747+00:00",
+    "approved_at": "2026-09-03T05:44:20.323747+00:00",
+    "executed_at": "2026-09-03T05:44:20.323747+00:00",
+    "state_hash_before": "bc025d54dcc9ec8bc393",
+    "state_hash_after": "bc025d54dcc9ec8bc393",
+    "action_parameters": {},
+    "execution_status": "OBSOLETE",
+    "failure_reason": "Stale state / constraint violation: Incident '10' no longer exists in simulation.",
+    "resulting_entity_ids": {
+      "recommended_hospital_id": "HOSP_001",
+      "incident_id": 10
+    }
+  },
+  {
+    "execution_id": "EXEC_6FF291D44AC8",
+    "recommendation_id": "REC_API_01",
+    "recommendation_type": "FLEET_REPOSITION",
+    "operator_id": "OP_API",
+    "operator_note": "Testing API approval",
+    "execution_mode": "OPERATOR_APPROVED",
+    "policy_mode": "GUARDED",
+    "policy_decision": "AUTO_APPROVE",
+    "confidence": 1.0,
+    "policy_version": "1.0.0",
+    "policy_rules_evaluated": [],
+    "policy_rejection_reason": null,
+    "predicted_benefit": 0.0,
+    "actual_benefit": 0.0,
+    "outcome": "PENDING",
+    "rollback_of": null,
+    "kill_switch_state": false,
+    "requested_at": "2026-09-03T05:44:52.549080+00:00",
+    "approved_at": "2026-09-03T05:44:52.549080+00:00",
+    "executed_at": "2026-09-03T05:44:52.549080+00:00",
+    "state_hash_before": "09b75471db494f2baa2d",
+    "state_hash_after": "1e062a422945357f2c0d",
+    "action_parameters": {
+      "status": "REPOSITIONING",
+      "ambulance_id": "AMB_0004",
+      "origin_zone": "JAIPUR_WEST",
+      "target_zone": "JAIPUR_NORTH",
+      "target_coords": [
+        26.96,
+        75.785
+      ],
+      "route_distance_km": 18.244,
+      "eta_minutes": 21.89,
+      "route_waypoints": [
+        [
+          26.886701356232788,
+          75.67627479481924
+        ],
+        [
+          26.889879,
+          75.682004
+        ],
+        [
+          26.892834,
+          75.687867
+        ],
+        [
+          26.895767,
+          75.693743
+        ],
+        [
+          26.898886,
+          75.699508
+        ],
+        [
+          26.902367,
+          75.705055
+        ],
+        [
+          26.906311,
+          75.710323
+        ],
+        [
+          26.910721,
+          75.715311
+        ],
+        [
+          26.915499,
+          75.720078
+        ],
+        [
+          26.920468,
+          75.724731
+        ],
+        [
+          26.925405,
+          75.729402
+        ],
+        [
+          26.930093,
+          75.734224
+        ],
+        [
+          26.934364,
+          75.739296
+        ],
+        [
+          26.938132,
+          75.74467
+        ],
+        [
+          26.941418,
+          75.750334
+        ],
+        [
+          26.944335,
+          75.75622
+        ],
+        [
+          26.947069,
+          75.762216
+        ],
+        [
+          26.949838,
+          75.76819
+        ],
+        [
+          26.95284,
+          75.774026
+        ],
+        [
+          26.956211,
+          75.779638
+        ],
+        [
+          26.96,
+          75.785
+        ]
+      ]
+    },
+    "execution_status": "SUCCESS",
+    "failure_reason": null,
+    "resulting_entity_ids": {
+      "ambulance_id": "AMB_0004",
+      "target_zone": "JAIPUR_NORTH",
+      "donor_zone": "JAIPUR_CENTRAL",
+      "donor_avail_before": 50,
+      "donor_avail_after": 49
+    }
+  },
+  {
+    "execution_id": "REJ_F7B37AA3154D",
+    "recommendation_id": "REC_API_REJ_01",
+    "recommendation_type": "FLEET_REPOSITION",
+    "operator_id": "OP_API",
+    "operator_note": "Not needed right now",
+    "execution_mode": "OPERATOR_APPROVED",
+    "policy_mode": "GUARDED",
+    "policy_decision": "AUTO_APPROVE",
+    "confidence": 1.0,
+    "policy_version": "1.0.0",
+    "policy_rules_evaluated": [],
+    "policy_rejection_reason": null,
+    "predicted_benefit": 0.0,
+    "actual_benefit": 0.0,
+    "outcome": "PENDING",
+    "rollback_of": null,
+    "kill_switch_state": false,
+    "requested_at": "2026-09-03T05:44:52.572066+00:00",
+    "approved_at": "2026-09-03T05:44:52.572066+00:00",
+    "executed_at": "2026-09-03T05:44:52.572066+00:00",
+    "state_hash_before": "",
+    "state_hash_after": "",
+    "action_parameters": {},
+    "execution_status": "REJECTED",
+    "failure_reason": "Not needed right now",
+    "resulting_entity_ids": {
+      "ambulance_id": "AMB_0009"
+    }
+  },
+  {
+    "execution_id": "EXEC_4FBA157DE4C9",
+    "recommendation_id": "REC_TEST_DIVERSION_001",
+    "recommendation_type": "HOSPITAL_DIVERSION",
+    "operator_id": "OPERATOR_DISPATCHER",
+    "operator_note": null,
+    "execution_mode": "OPERATOR_APPROVED",
+    "policy_mode": "GUARDED",
+    "policy_decision": "AUTO_APPROVE",
+    "confidence": 1.0,
+    "policy_version": "1.0.0",
+    "policy_rules_evaluated": [],
+    "policy_rejection_reason": null,
+    "predicted_benefit": 0.0,
+    "actual_benefit": 0.0,
+    "outcome": "PENDING",
+    "rollback_of": null,
+    "kill_switch_state": false,
+    "requested_at": "2026-09-03T06:45:13.870190+00:00",
+    "approved_at": "2026-09-03T06:45:13.870190+00:00",
+    "executed_at": "2026-09-03T06:45:13.870190+00:00",
+    "state_hash_before": "86171d7d8e831f20a425",
+    "state_hash_after": "86171d7d8e831f20a425",
+    "action_parameters": {},
+    "execution_status": "OBSOLETE",
+    "failure_reason": "Stale state / constraint violation: Incident '10' no longer exists in simulation.",
+    "resulting_entity_ids": {
+      "recommended_hospital_id": "HOSP_001",
+      "incident_id": 10
+    }
+  },
+  {
+    "execution_id": "EXEC_76530475DDE3",
+    "recommendation_id": "REC_API_01",
+    "recommendation_type": "FLEET_REPOSITION",
+    "operator_id": "OP_API",
+    "operator_note": "Testing API approval",
+    "execution_mode": "OPERATOR_APPROVED",
+    "policy_mode": "GUARDED",
+    "policy_decision": "AUTO_APPROVE",
+    "confidence": 1.0,
+    "policy_version": "1.0.0",
+    "policy_rules_evaluated": [],
+    "policy_rejection_reason": null,
+    "predicted_benefit": 0.0,
+    "actual_benefit": 0.0,
+    "outcome": "PENDING",
+    "rollback_of": null,
+    "kill_switch_state": false,
+    "requested_at": "2026-09-03T06:46:04.485340+00:00",
+    "approved_at": "2026-09-03T06:46:04.485340+00:00",
+    "executed_at": "2026-09-03T06:46:04.485340+00:00",
+    "state_hash_before": "09b75471db494f2baa2d",
+    "state_hash_after": "1e062a422945357f2c0d",
+    "action_parameters": {
+      "status": "REPOSITIONING",
+      "ambulance_id": "AMB_0004",
+      "origin_zone": "JAIPUR_WEST",
+      "target_zone": "JAIPUR_NORTH",
+      "target_coords": [
+        26.96,
+        75.785
+      ],
+      "route_distance_km": 18.244,
+      "eta_minutes": 21.89,
+      "route_waypoints": [
+        [
+          26.886701356232788,
+          75.67627479481924
+        ],
+        [
+          26.889879,
+          75.682004
+        ],
+        [
+          26.892834,
+          75.687867
+        ],
+        [
+          26.895767,
+          75.693743
+        ],
+        [
+          26.898886,
+          75.699508
+        ],
+        [
+          26.902367,
+          75.705055
+        ],
+        [
+          26.906311,
+          75.710323
+        ],
+        [
+          26.910721,
+          75.715311
+        ],
+        [
+          26.915499,
+          75.720078
+        ],
+        [
+          26.920468,
+          75.724731
+        ],
+        [
+          26.925405,
+          75.729402
+        ],
+        [
+          26.930093,
+          75.734224
+        ],
+        [
+          26.934364,
+          75.739296
+        ],
+        [
+          26.938132,
+          75.74467
+        ],
+        [
+          26.941418,
+          75.750334
+        ],
+        [
+          26.944335,
+          75.75622
+        ],
+        [
+          26.947069,
+          75.762216
+        ],
+        [
+          26.949838,
+          75.76819
+        ],
+        [
+          26.95284,
+          75.774026
+        ],
+        [
+          26.956211,
+          75.779638
+        ],
+        [
+          26.96,
+          75.785
+        ]
+      ]
+    },
+    "execution_status": "SUCCESS",
+    "failure_reason": null,
+    "resulting_entity_ids": {
+      "ambulance_id": "AMB_0004",
+      "target_zone": "JAIPUR_NORTH",
+      "donor_zone": "JAIPUR_CENTRAL",
+      "donor_avail_before": 50,
+      "donor_avail_after": 49
+    }
+  },
+  {
+    "execution_id": "REJ_84405C30DE9B",
+    "recommendation_id": "REC_API_REJ_01",
+    "recommendation_type": "FLEET_REPOSITION",
+    "operator_id": "OP_API",
+    "operator_note": "Not needed right now",
+    "execution_mode": "OPERATOR_APPROVED",
+    "policy_mode": "GUARDED",
+    "policy_decision": "AUTO_APPROVE",
+    "confidence": 1.0,
+    "policy_version": "1.0.0",
+    "policy_rules_evaluated": [],
+    "policy_rejection_reason": null,
+    "predicted_benefit": 0.0,
+    "actual_benefit": 0.0,
+    "outcome": "PENDING",
+    "rollback_of": null,
+    "kill_switch_state": false,
+    "requested_at": "2026-09-03T06:46:04.506010+00:00",
+    "approved_at": "2026-09-03T06:46:04.506010+00:00",
+    "executed_at": "2026-09-03T06:46:04.506010+00:00",
+    "state_hash_before": "",
+    "state_hash_after": "",
+    "action_parameters": {},
+    "execution_status": "REJECTED",
+    "failure_reason": "Not needed right now",
+    "resulting_entity_ids": {
+      "ambulance_id": "AMB_0009"
+    }
+  },
+  {
+    "execution_id": "EXEC_E87DD26BB689",
+    "recommendation_id": "REC_TEST_DIVERSION_001",
+    "recommendation_type": "HOSPITAL_DIVERSION",
+    "operator_id": "OPERATOR_DISPATCHER",
+    "operator_note": null,
+    "execution_mode": "OPERATOR_APPROVED",
+    "policy_mode": "GUARDED",
+    "policy_decision": "AUTO_APPROVE",
+    "confidence": 1.0,
+    "policy_version": "1.0.0",
+    "policy_rules_evaluated": [],
+    "policy_rejection_reason": null,
+    "predicted_benefit": 0.0,
+    "actual_benefit": 0.0,
+    "outcome": "PENDING",
+    "rollback_of": null,
+    "kill_switch_state": false,
+    "requested_at": "2026-09-03T06:48:21.374252+00:00",
+    "approved_at": "2026-09-03T06:48:21.374252+00:00",
+    "executed_at": "2026-09-03T06:48:21.374252+00:00",
+    "state_hash_before": "86171d7d8e831f20a425",
+    "state_hash_after": "86171d7d8e831f20a425",
+    "action_parameters": {},
+    "execution_status": "OBSOLETE",
+    "failure_reason": "Stale state / constraint violation: Incident '10' no longer exists in simulation.",
+    "resulting_entity_ids": {
+      "recommended_hospital_id": "HOSP_001",
+      "incident_id": 10
+    }
   }
 ]

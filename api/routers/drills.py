@@ -7,7 +7,7 @@ stress tests, perform comparative surge benchmarking, and inspect resilience res
 All drill runs execute against isolated Simulator instances and never mutate live state.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List, Optional, Dict, Any
 
 from Dispatch.scenarios.drills import (
@@ -17,6 +17,7 @@ from Dispatch.scenarios.drills import (
     run_casualty_surge,
     run_comparison,
 )
+from api.auth import AuthenticatedUser, Permission, require_permission
 from api.schemas.drills import (
     DrillInfoResponse,
     DrillRunRequest,
@@ -78,7 +79,10 @@ def get_drill_info(drill_name: str):
     response_model=StressRunResponse,
     summary="Execute a curated disaster drill deterministically",
 )
-def execute_drill(req: DrillRunRequest):
+def execute_drill(
+    req: DrillRunRequest,
+    user: AuthenticatedUser = Depends(require_permission(Permission.RUN_DRILLS)),
+):
     drill = DrillLibrary.get_drill(req.drill_name)
     if not drill:
         raise HTTPException(status_code=404, detail=f"Drill '{req.drill_name}' not found.")
@@ -93,7 +97,10 @@ def execute_drill(req: DrillRunRequest):
     response_model=StressRunResponse,
     summary="Execute a parameterized casualty surge stress test",
 )
-def execute_stress_test(req: StressRunRequest):
+def execute_stress_test(
+    req: StressRunRequest,
+    user: AuthenticatedUser = Depends(require_permission(Permission.RUN_DRILLS)),
+):
     result = run_casualty_surge(
         casualty_count=req.casualty_count,
         seed=req.seed or 42,
@@ -109,7 +116,10 @@ def execute_stress_test(req: StressRunRequest):
     response_model=List[ComparisonRowResponse],
     summary="Execute comparative casualty surge runs (e.g. 25 vs 50 vs 100 casualties)",
 )
-def execute_comparison(req: ComparisonRunRequest):
+def execute_comparison(
+    req: ComparisonRunRequest,
+    user: AuthenticatedUser = Depends(require_permission(Permission.RUN_DRILLS)),
+):
     counts = req.casualty_counts or [25, 50, 100]
     rows = run_comparison(casualty_counts=counts, seed=req.seed or 42)
     return [ComparisonRowResponse(**r) for r in rows]

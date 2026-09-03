@@ -1,9 +1,9 @@
 {
   "run_id": "test_isolation_check",
-  "baseline_version": "d827e1d",
-  "candidate_version": "d827e1d",
-  "started_at": "2026-09-01T16:55:23.025896+00:00",
-  "completed_at": "2026-09-01T16:55:28.870795+00:00",
+  "baseline_version": "b74dd34",
+  "candidate_version": "b74dd34",
+  "started_at": "2026-09-03T06:48:10.880564+00:00",
+  "completed_at": "2026-09-03T06:48:16.856008+00:00",
   "total_cases": 6,
   "passed_cases": 6,
   "warned_cases": 0,

@@ -1,9 +1,9 @@
 {
   "run_id": "test_reg_normal",
-  "baseline_version": "d827e1d",
-  "candidate_version": "d827e1d",
-  "started_at": "2026-09-01T16:54:42.880828+00:00",
-  "completed_at": "2026-09-01T16:54:49.141699+00:00",
+  "baseline_version": "b74dd34",
+  "candidate_version": "b74dd34",
+  "started_at": "2026-09-03T06:47:29.473544+00:00",
+  "completed_at": "2026-09-03T06:47:35.477597+00:00",
   "total_cases": 6,
   "passed_cases": 6,
   "warned_cases": 0,

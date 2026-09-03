@@ -23,6 +23,7 @@ from typing import Optional, Dict, Any
 from pathlib import Path
 
 from api.persistence.db import get_connection, init_db
+from api.settings import settings
 
 logger = logging.getLogger("raah.persistence.bridge")
 
@@ -30,16 +31,34 @@ logger = logging.getLogger("raah.persistence.bridge")
 class PersistenceBridge:
     """
     Background worker bridge between live Simulator events and SQLite.
+    Bounded queue prevents memory exhaustion while preserving non-blocking execution.
     """
 
-    def __init__(self, db_path: Optional[Path] = None):
+    def __init__(self, db_path: Optional[Path] = None, max_queue_size: Optional[int] = None):
         self.db_path = db_path
-        self._queue: queue.Queue = queue.Queue()
+        queue_cap = max_queue_size if max_queue_size is not None else getattr(settings, "persistence_queue_capacity", 10000)
+        self._queue: queue.Queue = queue.Queue(maxsize=queue_cap)
+        self._dropped_count = 0
         self._worker_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._active_run_id: Optional[int] = None
         self._run_id_lock = threading.Lock()
         self._is_started = False
+
+    @property
+    def queue_depth(self) -> int:
+        """Current number of telemetry items awaiting persistence."""
+        return self._queue.qsize()
+
+    @property
+    def queue_capacity(self) -> int:
+        """Configured maximum capacity of the telemetry queue."""
+        return self._queue.maxsize
+
+    @property
+    def dropped_count(self) -> int:
+        """Total number of telemetry records dropped due to queue saturation."""
+        return self._dropped_count
 
     @property
     def active_run_id(self) -> Optional[int]:
@@ -398,6 +417,13 @@ class PersistenceBridge:
         """Place an immutable event into the thread-safe queue."""
         try:
             self._queue.put_nowait(payload)
+        except queue.Full:
+            self._dropped_count += 1
+            logger.warning(
+                "Persistence telemetry queue full (%d items). Dropping telemetry record (total dropped: %d).",
+                self._queue.maxsize,
+                self._dropped_count,
+            )
         except Exception as err:
             logger.error("Failed to enqueue event for persistence: %s", err)
 

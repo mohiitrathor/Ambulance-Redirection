@@ -1,16 +1,27 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.config import FRONTEND_DIR
 from api.settings import settings
-from api.observability import setup_structured_logging, ObservabilityMiddleware
+from api.observability import setup_structured_logging, ObservabilityMiddleware, get_request_id
+from api.observability.metrics import metrics_collector
 from api.dependencies import manager
 from api.persistence.bridge import persistence_bridge
+from api.auth import (
+    auth_router,
+    require_authenticated_user,
+    AuthenticatedUser,
+    Permission,
+    require_permission,
+)
 from api.routers import (
     dispatch,
     state,
@@ -24,6 +35,8 @@ from api.routers import (
     replay_analysis,
     post_incident,
     optimization,
+    persistence,
+    ingestion,
 )
 
 # Initialize structured logging
@@ -37,29 +50,23 @@ setup_structured_logging(log_level=settings.log_level, log_format=settings.log_f
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Startup: Initialize the Simulator singleton and historical persistence run.
-    This loads all CSVs and populates the world state.
+    Startup: Validate production settings, initialize the Simulator singleton,
+    perform state recovery if enabled, and start persistence workers.
 
-    Shutdown: Cleanly stop any running background real-time
-    simulation thread, finalize the active run session as TERMINATED,
-    and cleanly shut down the background persistence worker.
+    Shutdown: Execute deterministic graceful shutdown with bounded timeout.
     """
+    violations = settings.validate_production_settings()
+    if violations:
+        import logging as _l
+        _logger = _l.getLogger("raah.lifespan")
+        for v in violations:
+            _logger.critical("PRODUCTION CONFIGURATION VIOLATION: %s", v)
+        raise ValueError(f"Production configuration validation failed: {violations}")
 
     manager.initialize()
     yield
-    manager.stop_realtime()
-    if manager.active_run_id is not None:
-        try:
-            with manager.lock:
-                final_time = manager.simulator.state.current_time if manager.simulator else 0
-            persistence_bridge.finalize_run(
-                manager.active_run_id,
-                final_sim_time=final_time,
-                status="TERMINATED",
-            )
-        except Exception:
-            pass
-    persistence_bridge.shutdown()
+    # Execute deterministic graceful shutdown with bounded timeout
+    manager.shutdown(timeout_seconds=settings.request_timeout_seconds)
 
 
 # ==============================================================
@@ -87,7 +94,7 @@ app.add_middleware(ObservabilityMiddleware)
 # CORS Whitelist from centralized settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=settings.effective_cors_origins,
     allow_credentials=settings.cors_allow_credentials,
     allow_methods=settings.cors_allow_methods,
     allow_headers=settings.cors_allow_headers,
@@ -98,64 +105,94 @@ app.add_middleware(
 # ROUTERS
 # ==============================================================
 
+# Authentication & Token Issuance (Public endpoints)
+app.include_router(
+    auth_router,
+)
+
+# Authenticated Operational Routers
+auth_dep = [Depends(require_authenticated_user())]
+
 app.include_router(
     dispatch.router,
     prefix="/dispatch",
     tags=["Dispatch"],
+    dependencies=auth_dep,
 )
 
 app.include_router(
     state.router,
     prefix="/state",
     tags=["State"],
+    dependencies=auth_dep,
 )
 
 app.include_router(
     events.router,
     prefix="/events",
     tags=["Events"],
+    dependencies=auth_dep,
 )
 
 app.include_router(
     redirection.router,
     prefix="/redirect",
     tags=["Redirection"],
+    dependencies=auth_dep,
 )
 
 app.include_router(
     simulation.router,
     prefix="/simulation",
     tags=["Simulation"],
+    dependencies=auth_dep,
 )
 
 app.include_router(
     analytics.router,
     prefix="/analytics",
     tags=["Analytics"],
+    dependencies=auth_dep,
 )
 
 app.include_router(
     coordination.router,
+    dependencies=auth_dep,
 )
 
 app.include_router(
     scenarios.router,
+    dependencies=auth_dep,
 )
 
 app.include_router(
     drills.router,
+    dependencies=auth_dep,
 )
 
 app.include_router(
     replay_analysis.router,
+    dependencies=auth_dep,
 )
 
 app.include_router(
     post_incident.router,
+    dependencies=auth_dep,
 )
 
 app.include_router(
     optimization.router,
+    dependencies=auth_dep,
+)
+
+app.include_router(
+    persistence.router,
+    dependencies=auth_dep,
+)
+
+app.include_router(
+    ingestion.router,
+    dependencies=auth_dep,
 )
 
 
@@ -214,6 +251,81 @@ def health_ready():
     if not is_ready:
         return JSONResponse(status_code=503, content=payload)
     return payload
+
+
+# ==============================================================
+# OPERATIONAL METRICS
+# ==============================================================
+
+@app.get(
+    "/metrics",
+    tags=["Observability"],
+    summary="Operational telemetry & metrics",
+    description="Returns aggregated metrics for requests, dispatch latencies, errors, and queues.",
+)
+def get_metrics(
+    user: AuthenticatedUser = Depends(require_permission(Permission.VIEW_LIVE)),
+):
+    return metrics_collector.get_snapshot()
+
+
+# ==============================================================
+# STANDARDIZED API ERROR HANDLERS
+# ==============================================================
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Standardized HTTP error contract preserving status codes and auth headers."""
+    headers = getattr(exc, "headers", None) or {}
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": "HTTP_ERROR",
+            "detail": exc.detail,
+            "status_code": exc.status_code,
+            "request_id": get_request_id(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+        headers=headers,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Clean validation error contract without leaking internal file paths."""
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "VALIDATION_ERROR",
+            "detail": exc.errors(),
+            "status_code": 422,
+            "request_id": get_request_id(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Fallback error handler preventing stack trace or secret leakage."""
+    _logger = logging.getLogger("raah.api.error")
+    _logger.error(
+        "Unhandled API operational exception on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+        exc_info=True,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "INTERNAL_SERVER_ERROR",
+            "message": "An unexpected operational error occurred.",
+            "status_code": 500,
+            "request_id": get_request_id(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
 
 
 # ==============================================================

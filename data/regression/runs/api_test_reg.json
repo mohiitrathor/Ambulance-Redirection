@@ -1,9 +1,9 @@
 {
   "run_id": "api_test_reg",
-  "baseline_version": "d827e1d",
-  "candidate_version": "d827e1d",
-  "started_at": "2026-09-01T16:55:17.335773+00:00",
-  "completed_at": "2026-09-01T16:55:23.013577+00:00",
+  "baseline_version": "b74dd34",
+  "candidate_version": "b74dd34",
+  "started_at": "2026-09-03T06:48:04.811686+00:00",
+  "completed_at": "2026-09-03T06:48:10.869212+00:00",
   "total_cases": 6,
   "passed_cases": 6,
   "warned_cases": 0,

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
 from api.dependencies import manager
 from api.schemas.dispatch import DispatchResult, CustomIncidentRequest
+from api.auth import AuthenticatedUser, Permission, require_permission
 
 
 # ==============================================================
@@ -26,7 +27,10 @@ router = APIRouter()
         "live authoritative state, and mutates DispatchState."
     ),
 )
-def dispatch_live_emergency(request: CustomIncidentRequest):
+def dispatch_live_emergency(
+    request: CustomIncidentRequest,
+    user: AuthenticatedUser = Depends(require_permission(Permission.INGEST_EMERGENCY)),
+):
 
     sim = manager.simulator
     lock = manager.lock
@@ -63,7 +67,10 @@ def dispatch_live_emergency(request: CustomIncidentRequest):
         "hospital selection, and state mutation."
     ),
 )
-def dispatch_incident(incident_id: int):
+def dispatch_incident(
+    incident_id: int,
+    user: AuthenticatedUser = Depends(require_permission(Permission.STANDARD_DISPATCH)),
+):
 
     sim = manager.simulator
     lock = manager.lock
