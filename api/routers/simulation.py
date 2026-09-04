@@ -15,6 +15,8 @@ from api.auth import (
     require_permission,
     require_any_role,
 )
+from api.realtime.broadcaster import broadcaster
+from api.realtime.models import EventType
 
 
 # ==============================================================
@@ -69,6 +71,34 @@ def simulation_tick(
         data = SimulationOutput.dashboard_snapshot(
             sim.state
         )
+        cur_time = sim.state.current_time
+        fleet_counts = data.get("fleet", {})
+        active_inc_count = len(data.get("active_incidents", []))
+        moving_ambs = [
+            {
+                "ambulance_id": str(a.ambulance_id),
+                "latitude": round(float(a.latitude), 6),
+                "longitude": round(float(a.longitude), 6),
+                "status": str(a.status),
+                "eta_minutes": round(float(a.eta_minutes), 2) if a.eta_minutes is not None else None,
+            }
+            for a in sim.state.ambulances.values()
+            if a.status == "EN_ROUTE" or getattr(a, "is_repositioning", False)
+        ]
+        tick_payload = {
+            "current_time": cur_time,
+            "status": "STOPPED",
+            "speed_multiplier": 60.0,
+            "ticks_processed": 1,
+            "fleet": fleet_counts,
+            "active_incidents_count": active_inc_count,
+            "moving_ambulances": moving_ambs,
+        }
+
+    try:
+        broadcaster.broadcast(EventType.TICK, tick_payload, cur_time)
+    except Exception:
+        pass
 
     return data
 

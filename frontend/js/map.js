@@ -12,12 +12,14 @@ class TacticalMap {
   constructor() {
     this.map = null;
     this.hospitalsLayer = null;
+    this.incidentsLayer = null;
     this.enRouteAmbulancesLayer = null;
     this.routePolylinesLayer = null;
     this.canvasIdleLayer = null;
 
-    this.hospitalMarkers = new Map(); // id -> L.marker
+    this.hospitalMarkers = new Map(); // id -> { marker, isSaturated }
     this.activeAmbulanceMarkers = new Map(); // id -> L.marker
+    this.incidentMarkers = new Map(); // id -> L.marker
     this.routeLines = new Map(); // incident_id -> L.polyline
   }
 
@@ -43,6 +45,7 @@ class TacticalMap {
     // Layer groups for clean management
     this.hospitalsLayer = L.layerGroup().addTo(this.map);
     this.routePolylinesLayer = L.layerGroup().addTo(this.map);
+    this.incidentsLayer = L.layerGroup().addTo(this.map);
     this.enRouteAmbulancesLayer = L.layerGroup().addTo(this.map);
     this.mciLayer = L.layerGroup().addTo(this.map);
 
@@ -59,32 +62,18 @@ class TacticalMap {
 
   // --- TIER 1: HOSPITALS (Always Visible) ---
   renderHospitals(hospitalsMap) {
-    this.hospitalsLayer.clearLayers();
-    this.hospitalMarkers.clear();
+    if (!hospitalsMap) return;
+    const currentHospIds = new Set();
 
     for (const [id, hosp] of hospitalsMap.entries()) {
+      currentHospIds.add(String(id));
       const isSaturated = hosp.available_beds <= 0 || hosp.is_full;
       const isCriticalIcuFull = hosp.available_icu <= 0;
 
       const markerClass = `hospital-marker-pin ${isSaturated ? 'saturated' : ''}`;
       const color = isSaturated ? '#ef4444' : '#0ea5e9';
 
-      const icon = L.divIcon({
-        className: 'custom-hosp-icon',
-        html: `
-          <div class="${markerClass}" style="background: ${color}; width: 22px; height: 22px; border-radius: 4px; display:flex; align-items:center; justify-content:center; border: 1px solid #fff;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-              <path d="M12 5v14M5 12h14"/>
-            </svg>
-          </div>
-        `,
-        iconSize: [22, 22],
-        iconAnchor: [11, 11],
-      });
-
-      const marker = L.marker([hosp.latitude, hosp.longitude], { icon });
-
-      marker.bindPopup(`
+      const popupHtml = `
         <div style="font-family: var(--font-sans); min-width: 185px;">
           <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px; color: ${color};">
             ${hosp.hospital_id} (${hosp.hospital_type})
@@ -102,40 +91,150 @@ class TacticalMap {
             </div>
           </div>
         </div>
-      `);
+      `;
 
-      marker.on('popupopen', (e) => {
-        const popupNode = e.popup.getElement();
-        if (!popupNode) return;
-        const btn = popupNode.querySelector('.btn-saturate-hosp');
-        if (btn) {
-          btn.addEventListener('click', async () => {
-            try {
-              await api.scheduleEvent(store.state.simTime, 'HOSPITAL_FULL', { hospital_id: hosp.hospital_id });
-              showToast('Hospital Saturated', `Simulated 100% capacity for ${hosp.hospital_id}`, 'warning');
-              marker.closePopup();
-            } catch (err) {
-              showToast('Event Error', err.message, 'danger');
-            }
-          });
+      const existing = this.hospitalMarkers.get(String(id));
+      if (existing) {
+        existing.marker.setLatLng([hosp.latitude, hosp.longitude]);
+        if (existing.marker.getPopup()) {
+          existing.marker.setPopupContent(popupHtml);
         }
-      });
+        if (existing.isSaturated !== isSaturated) {
+          existing.isSaturated = isSaturated;
+          const icon = L.divIcon({
+            className: 'custom-hosp-icon',
+            html: `
+              <div class="${markerClass}" style="background: ${color}; width: 22px; height: 22px; border-radius: 4px; display:flex; align-items:center; justify-content:center; border: 1px solid #fff;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+              </div>
+            `,
+            iconSize: [22, 22],
+            iconAnchor: [11, 11],
+          });
+          existing.marker.setIcon(icon);
+        }
+      } else {
+        const icon = L.divIcon({
+          className: 'custom-hosp-icon',
+          html: `
+            <div class="${markerClass}" style="background: ${color}; width: 22px; height: 22px; border-radius: 4px; display:flex; align-items:center; justify-content:center; border: 1px solid #fff;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+            </div>
+          `,
+          iconSize: [22, 22],
+          iconAnchor: [11, 11],
+        });
 
-      this.hospitalMarkers.set(id, marker);
-      this.hospitalsLayer.addLayer(marker);
+        const marker = L.marker([hosp.latitude, hosp.longitude], { icon });
+        marker.bindPopup(popupHtml);
+
+        marker.on('popupopen', (e) => {
+          const popupNode = e.popup.getElement();
+          if (!popupNode) return;
+          const btn = popupNode.querySelector('.btn-saturate-hosp');
+          if (btn) {
+            btn.onclick = async () => {
+              try {
+                await api.scheduleEvent(store.state.simTime, 'HOSPITAL_FULL', { hospital_id: hosp.hospital_id });
+                showToast('Hospital Saturated', `Simulated 100% capacity for ${hosp.hospital_id}`, 'warning');
+                marker.closePopup();
+              } catch (err) {
+                showToast('Event Error', err.message, 'danger');
+              }
+            };
+          }
+        });
+
+        this.hospitalMarkers.set(String(id), { marker, isSaturated });
+        this.hospitalsLayer.addLayer(marker);
+      }
+    }
+
+    for (const [id, entry] of this.hospitalMarkers.entries()) {
+      if (!currentHospIds.has(String(id))) {
+        this.hospitalsLayer.removeLayer(entry.marker);
+        this.hospitalMarkers.delete(id);
+      }
     }
   }
 
-  // --- TIER 2 & 3: EN_ROUTE AMBULANCES & DYNAMIC ROUTES ---
+  // --- TIER 2 & 3: ACTIVE INCIDENTS, EN_ROUTE AMBULANCES & DYNAMIC ROUTES ---
   renderActiveRoutesAndUnits(state) {
-    this.enRouteAmbulancesLayer.clearLayers();
-    this.routePolylinesLayer.clearLayers();
-    this.activeAmbulanceMarkers.clear();
-    this.routeLines.clear();
-
-    const activeIncidents = state.activeIncidents;
+    const activeIncidents = state.activeIncidents || [];
+    const activeIncidentIds = new Set();
+    const activeAmbulanceIds = new Set();
+    const activeRouteIds = new Set();
 
     for (const incident of activeIncidents) {
+      const incIdStr = String(incident.incident_id);
+      activeIncidentIds.add(incIdStr);
+
+      const hasCoords = incident.latitude !== undefined && incident.longitude !== undefined && incident.latitude !== null && incident.longitude !== null;
+      if (hasCoords) {
+        const pStr = String(incident.priority || 'P3').toUpperCase();
+        const pClass = pStr.startsWith('P') ? pStr.toLowerCase() : `p${pStr}`;
+        let incColor = '#eab308';
+        if (pClass === 'p1' || incident.severity === 'Critical') incColor = '#ef4444';
+        else if (pClass === 'p2' || incident.severity === 'Emergency') incColor = '#f97316';
+        else if (pClass === 'p4' || incident.severity === 'Low') incColor = '#0ea5e9';
+        else if (pClass === 'p5' || incident.severity === 'Non-Urgent') incColor = '#64748b';
+
+        const incPopupHtml = `
+          <div style="font-family: var(--font-sans); min-width: 175px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <span style="font-weight: 800; font-size: 13px; color: ${incColor};">Incident #${incident.incident_id}</span>
+              <span class="priority-pill ${pClass}" style="font-size: 9px; padding: 1px 5px;">${incident.priority || 'P?'}</span>
+            </div>
+            <div style="font-size: 11px; font-family: var(--font-mono); color: #cbd5e1; line-height: 1.4;">
+              <div>Severity: <strong>${incident.severity || 'Unknown'}</strong></div>
+              <div>Assigned: <strong>${incident.ambulance_id || 'Pending'}</strong></div>
+              <div>Facility: <strong>${incident.hospital_id || 'Pending'}</strong></div>
+              ${incident.eta_minutes !== undefined && incident.eta_minutes !== null ? `<div>ETA: <strong style="color: #f59e0b;">${Number(incident.eta_minutes).toFixed(1)}m</strong></div>` : ''}
+            </div>
+            <div style="margin-top: 6px; padding-top: 4px; border-top: 1px solid #334155; text-align: center;">
+              <span style="font-size: 10px; color: #38bdf8; font-weight: 600;">🔍 Click to inspect detail</span>
+            </div>
+          </div>
+        `;
+
+        const existingIncMarker = this.incidentMarkers.get(incIdStr);
+        if (existingIncMarker) {
+          existingIncMarker.setLatLng([incident.latitude, incident.longitude]);
+          if (existingIncMarker.getPopup()) {
+            existingIncMarker.setPopupContent(incPopupHtml);
+          }
+        } else {
+          const incIcon = L.divIcon({
+            className: 'custom-incident-icon',
+            html: `
+              <div class="incident-marker-pin ${pClass}" style="background: ${incColor};">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3">
+                  <path d="M12 2L2 22h20L12 2z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </div>
+            `,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+          });
+
+          const incMarker = L.marker([incident.latitude, incident.longitude], { icon: incIcon });
+          incMarker.bindPopup(incPopupHtml);
+          incMarker.on('click', () => {
+            store.selectIncident(incident.incident_id);
+            this.focusIncident(incident.incident_id);
+            openIncidentDetail(incident.incident_id);
+          });
+          this.incidentMarkers.set(incIdStr, incMarker);
+          this.incidentsLayer.addLayer(incMarker);
+        }
+      }
+
       if (!incident.ambulance_id || !incident.hospital_id) continue;
 
       const ambulance = state.ambulances.get(String(incident.ambulance_id));
@@ -146,31 +245,18 @@ class TacticalMap {
       const isEnRoute = ambulance.status === 'EN_ROUTE';
       const isCritical = incident.severity === 'Critical';
       const unitColor = isCritical ? '#ef4444' : '#f59e0b';
+      const ambIdStr = String(ambulance.ambulance_id);
 
       if (isEnRoute) {
-        // 1. Prominent Vehicle Marker
-        const icon = L.divIcon({
-          className: 'custom-amb-icon',
-          html: `
-            <div class="ambulance-marker-pin" style="background: ${unitColor};">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1 .4-1 1v9"/>
-                <circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/>
-              </svg>
-            </div>
-          `,
-          iconSize: [26, 26],
-          iconAnchor: [13, 13],
-        });
+        activeAmbulanceIds.add(ambIdStr);
+        activeRouteIds.add(incIdStr);
 
-        const ambMarker = L.marker([ambulance.latitude, ambulance.longitude], { icon });
+        const etaText = ambulance.eta_minutes !== null && ambulance.eta_minutes !== undefined ? `${Number(ambulance.eta_minutes).toFixed(1)} min` : 'Calculating';
 
-        const etaText = ambulance.eta_minutes !== null ? `${ambulance.eta_minutes.toFixed(1)} min` : 'Calculating';
-
-        ambMarker.bindPopup(`
+        const ambPopupHtml = `
           <div style="font-family: var(--font-sans); min-width: 170px;">
             <div style="font-weight: 800; font-size: 13px; color: ${unitColor};">
-              ${ambulance.ambulance_id} (${ambulance.ambulance_type})
+              ${ambulance.ambulance_id} (${ambulance.ambulance_type || 'ALS'})
             </div>
             <div style="font-size: 11px; margin-top: 4px; font-family: var(--font-mono); color: #cbd5e1;">
               <div>Status: <strong>${ambulance.status}</strong></div>
@@ -179,68 +265,25 @@ class TacticalMap {
               <div>Traffic: ${ambulance.traffic_level || 'NORMAL'}</div>
             </div>
           </div>
-        `);
+        `;
 
-        ambMarker.bindTooltip(`${ambulance.ambulance_id} | ${etaText}`, {
-          permanent: true,
-          direction: 'top',
-          offset: [0, -14],
-          className: 'amb-tooltip',
-        });
-
-        ambMarker.on('click', () => {
-          store.selectIncident(incident.incident_id);
-          this.focusIncident(incident.incident_id);
-          openIncidentDetail(incident.incident_id);
-        });
-
-        this.activeAmbulanceMarkers.set(ambulance.ambulance_id, ambMarker);
-        this.enRouteAmbulancesLayer.addLayer(ambMarker);
-
-        // 2. Multi-point tactical polyline route between Ambulance and Hospital
-        const routePoints = (ambulance.route_waypoints && ambulance.route_waypoints.length > 1)
-          ? ambulance.route_waypoints
-          : [
-              [ambulance.latitude, ambulance.longitude],
-              [hospital.latitude, hospital.longitude],
-            ];
-
-        const routeLine = L.polyline(
-          routePoints,
-          {
-            color: unitColor,
-            weight: 3,
-            dashArray: '6, 8',
-            opacity: 0.85,
+        const existingAmbMarker = this.activeAmbulanceMarkers.get(ambIdStr);
+        if (existingAmbMarker) {
+          existingAmbMarker.setLatLng([ambulance.latitude, ambulance.longitude]);
+          if (existingAmbMarker.getPopup()) {
+            existingAmbMarker.setPopupContent(ambPopupHtml);
           }
-        );
-
-        routeLine.on('click', () => {
-          store.selectIncident(incident.incident_id);
-          this.focusIncident(incident.incident_id);
-          openIncidentDetail(incident.incident_id);
-        });
-
-        this.routeLines.set(incident.incident_id, routeLine);
-        this.routePolylinesLayer.addLayer(routeLine);
-      }
-    }
-
-    // --- TIER 4: REPOSITIONING AMBULANCES (M9) ---
-    if (state.ambulances) {
-      const ambs = state.ambulances instanceof Map ? state.ambulances.values() : Object.values(state.ambulances);
-      for (const ambulance of ambs) {
-        if (ambulance.status === 'REPOSITIONING' || ambulance.is_repositioning) {
-          const repoColor = '#06b6d4'; // Tactical Cyan
-
-          // Repositioning Vehicle Pin
+          if (existingAmbMarker.getTooltip()) {
+            existingAmbMarker.setTooltipContent(`${ambulance.ambulance_id} | ${etaText}`);
+          }
+        } else {
           const icon = L.divIcon({
             className: 'custom-amb-icon',
             html: `
-              <div class="ambulance-marker-pin" style="background: ${repoColor}; box-shadow: 0 0 10px rgba(6, 182, 212, 0.6);">
+              <div class="ambulance-marker-pin" style="background: ${unitColor};">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <path d="M4 14l6-6 6 6"/>
-                  <path d="M10 8v12"/>
+                  <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1 .4-1 1v9"/>
+                  <circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/>
                 </svg>
               </div>
             `,
@@ -249,9 +292,71 @@ class TacticalMap {
           });
 
           const ambMarker = L.marker([ambulance.latitude, ambulance.longitude], { icon });
-          const etaText = ambulance.eta_minutes !== null ? `${ambulance.eta_minutes.toFixed(1)} min` : 'Transit';
+          ambMarker.bindPopup(ambPopupHtml);
+          ambMarker.bindTooltip(`${ambulance.ambulance_id} | ${etaText}`, {
+            permanent: true,
+            direction: 'top',
+            offset: [0, -14],
+            className: 'amb-tooltip',
+          });
 
-          ambMarker.bindPopup(`
+          ambMarker.on('click', () => {
+            store.selectIncident(incident.incident_id);
+            this.focusIncident(incident.incident_id);
+            openIncidentDetail(incident.incident_id);
+          });
+
+          this.activeAmbulanceMarkers.set(ambIdStr, ambMarker);
+          this.enRouteAmbulancesLayer.addLayer(ambMarker);
+        }
+
+        const routePoints = (ambulance.route_waypoints && ambulance.route_waypoints.length > 1)
+          ? ambulance.route_waypoints
+          : [
+              [ambulance.latitude, ambulance.longitude],
+              [hospital.latitude, hospital.longitude],
+            ];
+
+        const existingRoute = this.routeLines.get(incIdStr);
+        if (existingRoute) {
+          existingRoute.setLatLngs(routePoints);
+          existingRoute.setStyle({ color: unitColor });
+        } else {
+          const routeLine = L.polyline(
+            routePoints,
+            {
+              color: unitColor,
+              weight: 3,
+              dashArray: '6, 8',
+              opacity: 0.85,
+            }
+          );
+
+          routeLine.on('click', () => {
+            store.selectIncident(incident.incident_id);
+            this.focusIncident(incident.incident_id);
+            openIncidentDetail(incident.incident_id);
+          });
+
+          this.routeLines.set(incIdStr, routeLine);
+          this.routePolylinesLayer.addLayer(routeLine);
+        }
+      }
+    }
+
+    // --- TIER 4: REPOSITIONING AMBULANCES (M9) ---
+    if (state.ambulances) {
+      const ambs = state.ambulances instanceof Map ? state.ambulances.values() : Object.values(state.ambulances);
+      for (const ambulance of ambs) {
+        if (ambulance.status === 'REPOSITIONING' || ambulance.is_repositioning) {
+          const ambIdStr = String(ambulance.ambulance_id);
+          const repoKey = `repo_${ambIdStr}`;
+          activeAmbulanceIds.add(ambIdStr);
+
+          const repoColor = '#06b6d4'; // Tactical Cyan
+          const etaText = ambulance.eta_minutes !== null && ambulance.eta_minutes !== undefined ? `${Number(ambulance.eta_minutes).toFixed(1)} min` : 'Transit';
+
+          const repoPopupHtml = `
             <div style="font-family: var(--font-sans); min-width: 180px;">
               <div style="font-weight: 800; font-size: 13px; color: ${repoColor};">
                 ${ambulance.ambulance_id} [REPOSITIONING]
@@ -262,38 +367,96 @@ class TacticalMap {
                 <div>ETA: <strong style="color: ${repoColor};">${etaText}</strong></div>
               </div>
             </div>
-          `);
+          `;
 
-          ambMarker.bindTooltip(`${ambulance.ambulance_id} | ${etaText}`, {
-            permanent: true,
-            direction: 'top',
-            offset: [0, -14],
-            className: 'amb-tooltip',
-          });
-
-          this.activeAmbulanceMarkers.set(ambulance.ambulance_id, ambMarker);
-          this.enRouteAmbulancesLayer.addLayer(ambMarker);
-
-          // Repositioning Route Polyline
-          if (ambulance.route_waypoints && ambulance.route_waypoints.length > 1) {
-            const routeLine = L.polyline(ambulance.route_waypoints, {
-              color: repoColor,
-              weight: 3,
-              dashArray: '4, 6',
-              opacity: 0.85,
+          const existingRepoMarker = this.activeAmbulanceMarkers.get(ambIdStr);
+          if (existingRepoMarker) {
+            existingRepoMarker.setLatLng([ambulance.latitude, ambulance.longitude]);
+            if (existingRepoMarker.getPopup()) {
+              existingRepoMarker.setPopupContent(repoPopupHtml);
+            }
+            if (existingRepoMarker.getTooltip()) {
+              existingRepoMarker.setTooltipContent(`${ambulance.ambulance_id} | ${etaText}`);
+            }
+          } else {
+            const icon = L.divIcon({
+              className: 'custom-amb-icon',
+              html: `
+                <div class="ambulance-marker-pin" style="background: ${repoColor}; box-shadow: 0 0 10px rgba(6, 182, 212, 0.6);">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M4 14l6-6 6 6"/>
+                    <path d="M10 8v12"/>
+                  </svg>
+                </div>
+              `,
+              iconSize: [26, 26],
+              iconAnchor: [13, 13],
             });
-            this.routeLines.set(`repo_${ambulance.ambulance_id}`, routeLine);
-            this.routePolylinesLayer.addLayer(routeLine);
+
+            const ambMarker = L.marker([ambulance.latitude, ambulance.longitude], { icon });
+            ambMarker.bindPopup(repoPopupHtml);
+            ambMarker.bindTooltip(`${ambulance.ambulance_id} | ${etaText}`, {
+              permanent: true,
+              direction: 'top',
+              offset: [0, -14],
+              className: 'amb-tooltip',
+            });
+
+            this.activeAmbulanceMarkers.set(ambIdStr, ambMarker);
+            this.enRouteAmbulancesLayer.addLayer(ambMarker);
+          }
+
+          if (ambulance.route_waypoints && ambulance.route_waypoints.length > 1) {
+            activeRouteIds.add(repoKey);
+            const existingRepoRoute = this.routeLines.get(repoKey);
+            if (existingRepoRoute) {
+              existingRepoRoute.setLatLngs(ambulance.route_waypoints);
+            } else {
+              const routeLine = L.polyline(ambulance.route_waypoints, {
+                color: repoColor,
+                weight: 3,
+                dashArray: '4, 6',
+                opacity: 0.85,
+              });
+              this.routeLines.set(repoKey, routeLine);
+              this.routePolylinesLayer.addLayer(routeLine);
+            }
           }
         }
+      }
+    }
+
+    // Prune inactive markers & polylines
+    for (const [id, marker] of this.incidentMarkers.entries()) {
+      if (!activeIncidentIds.has(String(id))) {
+        this.incidentsLayer.removeLayer(marker);
+        this.incidentMarkers.delete(id);
+      }
+    }
+    for (const [id, marker] of this.activeAmbulanceMarkers.entries()) {
+      if (!activeAmbulanceIds.has(String(id))) {
+        this.enRouteAmbulancesLayer.removeLayer(marker);
+        this.activeAmbulanceMarkers.delete(id);
+      }
+    }
+    for (const [id, routeLine] of this.routeLines.entries()) {
+      if (!activeRouteIds.has(String(id))) {
+        this.routePolylinesLayer.removeLayer(routeLine);
+        this.routeLines.delete(id);
       }
     }
   }
 
   focusIncident(incidentId) {
-    const route = this.routeLines.get(incidentId);
+    const route = this.routeLines.get(String(incidentId));
     if (route) {
       this.map.fitBounds(route.getBounds(), { padding: [40, 40] });
+      return;
+    }
+    const incMarker = this.incidentMarkers.get(String(incidentId));
+    if (incMarker) {
+      this.map.setView(incMarker.getLatLng(), 15);
+      incMarker.openPopup();
     }
   }
 

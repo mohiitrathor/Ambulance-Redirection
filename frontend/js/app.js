@@ -15,6 +15,7 @@ import { setupEvents } from './components/events.js';
 import { setupDecisions } from './components/decisions.js';
 import { setupDetailDrawer } from './components/detail_drawer.js';
 import { setupAnalytics } from './components/analytics.js';
+import { setupConnectionStatus } from './components/connection_status.js';
 import { coordinationComponent } from './components/coordination.js';
 import { DrillsController } from './components/drills.js';
 import { ReplayController } from './components/replay.js';
@@ -42,6 +43,7 @@ async function bootstrap() {
   setupDecisions();
   setupDetailDrawer();
   setupAnalytics();
+  setupConnectionStatus();
   coordinationComponent.init();
   new DrillsController();
 
@@ -130,22 +132,44 @@ function initRealtimeStream() {
   streamHandle = api.connectEventStream({
     onOpen: () => {
       console.log('✓ Real-time SSE command center stream active.');
+      store.setConnectionStatus({
+        state: 'connected',
+        sequence: streamHandle ? streamHandle.getCurrentSequence() : 0,
+        reconnectAttempts: 0,
+      });
     },
     onSnapshot: (event) => {
       if (event.payload && event.payload.dashboard) {
         store.updateFromDashboard(event.payload.dashboard);
+        if (event.payload.dashboard.hospitals) {
+          store.setHospitals(event.payload.dashboard.hospitals);
+        }
       }
       lastSequence = event.sequence;
+      store.setConnectionStatus({
+        state: 'connected',
+        sequence: event.sequence,
+        lastEventTime: event.timestamp || new Date().toISOString(),
+        lastEventType: 'STATE_SNAPSHOT',
+      });
     },
     onGap: () => {
+      store.setConnectionStatus({ state: 'syncing' });
       triggerAuthoritativeRecovery('gap_detected_in_stream');
     },
     onEvent: (event) => {
       // Check sequence monotonicity & gap
       if (lastSequence !== null && event.sequence > lastSequence + 1 && event.event_type !== 'STATE_SNAPSHOT') {
+        store.setConnectionStatus({ state: 'syncing' });
         triggerAuthoritativeRecovery(`sequence_gap_${lastSequence}_to_${event.sequence}`);
       }
       lastSequence = event.sequence;
+
+      store.setConnectionStatus({
+        sequence: event.sequence,
+        lastEventTime: event.timestamp || new Date().toISOString(),
+        lastEventType: event.event_type,
+      });
 
       switch (event.event_type) {
         case 'TICK':
@@ -158,38 +182,98 @@ function initRealtimeStream() {
             });
             store.updateFromDashboard(event.payload);
             if (event.payload.moving_ambulances && event.payload.moving_ambulances.length > 0) {
-              store.setAmbulances(event.payload.moving_ambulances);
+              store.updateAmbulances(event.payload.moving_ambulances);
             }
           }
           break;
 
         case 'INCIDENT_DISPATCHED':
           if (event.payload) {
-            store.updateFromDashboard({ active_incidents: [event.payload] });
-            showToast('Incident Dispatched', `Ambulance ${event.payload.ambulance_id || 'unit'} assigned to incident #${event.payload.incident_id}`, 'info');
+            store.addOrUpdateIncident(event.payload);
+            const ambId = event.payload.ambulance_id || (event.payload.ambulance ? event.payload.ambulance.ambulance_id : 'unit');
+            const hospId = event.payload.hospital_id || (event.payload.hospital ? event.payload.hospital.hospital_id : 'facility');
+            store.addActivityEntry({
+              type: 'DISPATCH',
+              badge: 'DISPATCH',
+              time: event.payload.time !== undefined ? event.payload.time : store.state.simTime,
+              message: `Ambulance ${ambId} dispatched to Incident #${event.payload.incident_id} → ${hospId}`,
+              incident_id: event.payload.incident_id,
+              details: event.payload,
+            });
+            showToast('Incident Dispatched', `Ambulance ${ambId} assigned to incident #${event.payload.incident_id}`, 'info');
           }
           break;
 
         case 'AMBULANCE_UPDATE':
           if (event.payload) {
-            store.setAmbulances([event.payload]);
+            store.updateAmbulances([event.payload]);
+            store.addActivityEntry({
+              type: 'AMBULANCE',
+              badge: 'AMBULANCE',
+              time: store.state.simTime,
+              message: `Ambulance ${event.payload.ambulance_id}: ${event.payload.status || 'position update'}${event.payload.eta_minutes !== undefined && event.payload.eta_minutes !== null ? ` (ETA: ${Number(event.payload.eta_minutes).toFixed(1)}m)` : ''}`,
+              details: event.payload,
+            });
+          }
+          break;
+
+        case 'HOSPITAL_UPDATE':
+          if (event.payload) {
+            store.updateHospital(event.payload);
+            const isFull = event.payload.available_beds <= 0 || event.payload.is_full;
+            store.addActivityEntry({
+              type: 'HOSPITAL',
+              badge: 'HOSPITAL',
+              time: store.state.simTime,
+              message: `Hospital ${event.payload.hospital_id} capacity: ${event.payload.available_beds} beds available${isFull ? ' ⚠️ SATURATED' : ''}`,
+              details: event.payload,
+            });
+            if (isFull) {
+              showToast('Hospital Saturated', `Hospital ${event.payload.hospital_id} at 100% capacity!`, 'warning');
+            }
           }
           break;
 
         case 'REDIRECTION_EXECUTED':
           if (event.payload) {
-            showToast('Hospital Redirection', `Diverted to hospital ${event.payload.new_hospital_id} (saved ${event.payload.eta_saved || 0}m)`, 'warning');
+            store.addDecision(event.payload);
+            const saved = event.payload.eta_saved !== undefined ? Number(event.payload.eta_saved).toFixed(1) : '0.0';
+            store.addActivityEntry({
+              type: 'REDIRECT',
+              badge: 'REDIRECT',
+              time: event.payload.time !== undefined ? event.payload.time : store.state.simTime,
+              message: `Incident #${event.payload.incident_id} diverted to ${event.payload.new_hospital_id} (ETA saved: ${saved}m)`,
+              incident_id: event.payload.incident_id,
+              details: event.payload,
+            });
+            showToast('Hospital Redirection', `Diverted to hospital ${event.payload.new_hospital_id} (saved ${saved}m)`, 'warning');
           }
           break;
 
         case 'MCI_ALERT':
           if (event.payload) {
             const mciName = event.payload.mci ? event.payload.mci.name : 'Emergency';
+            store.addActivityEntry({
+              type: 'MCI',
+              badge: 'MCI',
+              time: store.state.simTime,
+              message: `MCI Alert: ${event.payload.action} - ${mciName} (${event.payload.dispatched_count || 0} units assigned)`,
+              details: event.payload,
+            });
             showToast('MCI Coordination Alert', `${event.payload.action}: ${mciName}`, 'danger');
           }
           break;
 
-        case 'HOSPITAL_UPDATE':
+        case 'SYSTEM_ALERT':
+          if (event.payload) {
+            store.addActivityEntry({
+              type: 'ALERT',
+              badge: 'ALERT',
+              time: store.state.simTime,
+              message: event.payload.message || 'System alert triggered',
+              details: event.payload,
+            });
+          }
           break;
 
         case 'HEARTBEAT':
@@ -198,6 +282,7 @@ function initRealtimeStream() {
     },
     onError: (err) => {
       console.warn('[Realtime] Stream disconnected:', err.message);
+      store.setConnectionStatus({ state: 'reconnecting' });
     },
   });
 }

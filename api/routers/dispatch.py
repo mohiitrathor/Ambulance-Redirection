@@ -108,4 +108,13 @@ def dispatch_incident(
                 detail=f"Dispatch engine error: {error}",
             )
 
+    try:
+        broadcaster.broadcast(
+            EventType.INCIDENT_DISPATCHED,
+            result,
+            sim.state.current_time,
+        )
+    except Exception:
+        pass
+
     return result
