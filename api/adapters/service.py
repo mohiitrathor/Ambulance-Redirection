@@ -232,6 +232,23 @@ class IngestionService:
                 },
             )
 
+            # Broadcast corresponding realtime event (M13 Phase 1)
+            try:
+                from api.realtime.broadcaster import broadcaster
+                from api.realtime.models import EventType as RealtimeEventType
+                sim_time = manager.simulator.state.current_time if manager.simulator else 0
+                evt_map = {
+                    "CAD_INCIDENT": RealtimeEventType.INCIDENT_DISPATCHED,
+                    "GPS_LOCATION": RealtimeEventType.AMBULANCE_UPDATE,
+                    "HOSPITAL_STATUS": RealtimeEventType.HOSPITAL_UPDATE,
+                    "AMBULANCE_STATUS": RealtimeEventType.AMBULANCE_UPDATE,
+                }
+                rt_type = evt_map.get(event.event_type.value if hasattr(event.event_type, "value") else str(event.event_type))
+                if rt_type and mutation_result:
+                    broadcaster.broadcast(rt_type, mutation_result, sim_time)
+            except Exception as bcast_err:
+                logger.debug("Ingestion realtime broadcast notice: %s", bcast_err)
+
             return self._build_response(
                 event=event,
                 status=EventStatus.ACCEPTED,

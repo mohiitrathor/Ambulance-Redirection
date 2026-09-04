@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from api.dependencies import manager
 from redirection_engine import check_live_redirection
 from api.auth import AuthenticatedUser, Permission, require_permission
+from api.realtime.broadcaster import broadcaster
+from api.realtime.models import EventType
 from api.schemas.redirection import (
     RedirectionResult,
     DecisionRecord,
@@ -135,7 +137,18 @@ def apply_redirection(
                 detail=f"Manual redirection failed: {error}",
             )
 
-        return DecisionRecord(**asdict(decision))
+        payload = asdict(decision)
+
+    try:
+        broadcaster.broadcast(
+            EventType.REDIRECTION_EXECUTED,
+            payload,
+            sim.state.current_time,
+        )
+    except Exception:
+        pass
+
+    return DecisionRecord(**payload)
 
 
 # ==============================================================

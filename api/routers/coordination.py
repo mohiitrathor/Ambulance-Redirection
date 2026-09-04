@@ -11,6 +11,8 @@ from typing import List
 
 from api.dependencies import manager
 from api.auth import AuthenticatedUser, Permission, require_permission
+from api.realtime.broadcaster import broadcaster
+from api.realtime.models import EventType
 from api.schemas.coordination import (
     CoverageSummaryResponse,
     ZoneCoverageResponse,
@@ -199,6 +201,15 @@ def declare_mci(
             )
         except Exception as err:
             raise HTTPException(status_code=400, detail=f"MCI declaration failed: {err}")
+
+    try:
+        broadcaster.broadcast(
+            EventType.MCI_ALERT,
+            {"action": "DECLARED", "mci": res["mci"], "dispatched_count": res["dispatched_count"]},
+            sim.state.current_time,
+        )
+    except Exception:
+        pass
 
     return MCIDeclareResponse(
         status="MCI_DECLARED",

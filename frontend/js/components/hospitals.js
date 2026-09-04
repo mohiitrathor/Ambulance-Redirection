@@ -15,9 +15,10 @@ async function refreshProjections() {
 export function setupHospitals() {
   const container = document.getElementById('hospitals-container');
 
-  // Periodic projections fetch
+  // Initial load and degraded background safety fallback (60 seconds)
+  // Real-time capacity shifts are streamed via SSE TICK and HOSPITAL_UPDATE projections
   refreshProjections();
-  setInterval(refreshProjections, 10000);
+  setInterval(refreshProjections, 60000);
 
   store.subscribe((state, changedKeys) => {
     if (!changedKeys.includes('hospitals') && !changedKeys.includes('dashboard')) {

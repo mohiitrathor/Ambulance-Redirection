@@ -16,6 +16,7 @@ if str(DISPATCH_DIR) not in sys.path:
     sys.path.insert(0, str(DISPATCH_DIR))
 
 from simulator import Simulator
+from simulation_output import SimulationOutput
 from api.persistence import (
     persistence_bridge,
     SQLiteStateStore,
@@ -551,6 +552,42 @@ class SimulatorManager:
                     self._simulator.process_events()
                     self._simulator.check_redirections()
 
+                    # Extract lightweight projection under lock (M13 Phase 1)
+                    sim_state = self._simulator.state
+                    cur_time = sim_state.current_time
+                    fleet_counts = SimulationOutput.fleet_summary(sim_state.ambulances.values())
+                    active_inc_count = len(sim_state.get_active_incidents())
+                    moving_ambs = [
+                        {
+                            "ambulance_id": str(a.ambulance_id),
+                            "latitude": round(float(a.latitude), 6),
+                            "longitude": round(float(a.longitude), 6),
+                            "status": str(a.status),
+                            "eta_minutes": round(float(a.eta_minutes), 2) if a.eta_minutes is not None else None,
+                        }
+                        for a in sim_state.ambulances.values()
+                        if a.status == "EN_ROUTE" or getattr(a, "is_repositioning", False)
+                    ]
+                    tick_payload = {
+                        "current_time": cur_time,
+                        "status": "RUNNING",
+                        "speed_multiplier": float(
+                            self._minutes_per_tick / max(self._tick_interval_seconds, 0.001) * 60.0
+                        ),
+                        "ticks_processed": self._ticks_processed + 1,
+                        "fleet": fleet_counts,
+                        "active_incidents_count": active_inc_count,
+                        "moving_ambulances": moving_ambs,
+                    }
+
+                # Broadcast TICK outside _lock
+                try:
+                    from api.realtime.broadcaster import broadcaster
+                    from api.realtime.models import EventType
+                    broadcaster.broadcast(EventType.TICK, tick_payload, cur_time)
+                except Exception as bcast_err:
+                    logger.debug("Realtime tick broadcast exception: %s", bcast_err)
+
                 self._ticks_processed += 1
                 self._consecutive_errors = 0
 
@@ -690,6 +727,13 @@ class SimulatorManager:
             self._persistence_store.close()
         except Exception as err:
             logger.warning("Error closing persistence store: %s", err)
+
+        # 7. Shutdown realtime broadcaster (M13 Phase 1)
+        try:
+            from api.realtime.broadcaster import broadcaster
+            broadcaster.shutdown()
+        except Exception as err:
+            logger.warning("Error shutting down realtime broadcaster: %s", err)
 
         with self._lock:
             self._simulator = None

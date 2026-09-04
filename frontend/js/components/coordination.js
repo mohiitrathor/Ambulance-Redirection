@@ -37,9 +37,10 @@ class CoordinationComponent {
 
     this.initMCIControls();
 
-    // Initial load and periodic refresh every 10 seconds
+    // Initial load and degraded background safety fallback (60 seconds)
+    // Primary real-time synchronization is delivered via SSE MCI_ALERT events
     this.refresh();
-    this.pollInterval = setInterval(() => this.refresh(), 10000);
+    this.pollInterval = setInterval(() => this.refresh(), 60000);
   }
 
   initMCIControls() {

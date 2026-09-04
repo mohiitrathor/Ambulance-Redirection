@@ -3,6 +3,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from api.dependencies import manager
 from api.schemas.dispatch import DispatchResult, CustomIncidentRequest
 from api.auth import AuthenticatedUser, Permission, require_permission
+from api.realtime.broadcaster import broadcaster
+from api.realtime.models import EventType
 
 
 # ==============================================================
@@ -49,6 +51,15 @@ def dispatch_live_emergency(
                 status_code=500,
                 detail=f"Live dispatch error: {error}",
             )
+
+    try:
+        broadcaster.broadcast(
+            EventType.INCIDENT_DISPATCHED,
+            result,
+            sim.state.current_time,
+        )
+    except Exception:
+        pass
 
     return result
 

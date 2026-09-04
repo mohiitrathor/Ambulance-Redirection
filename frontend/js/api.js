@@ -295,12 +295,150 @@ export const rejectLearningRecommendation = (id, operatorId = 'OPERATOR_DISPATCH
     method: 'POST',
     body: JSON.stringify({ operator_id: operatorId, reason }),
   });
-export const getPolicyHistory = () => request('/optimization/policy/history');
 export const rollbackPolicyVersion = (policyVersion, operatorId = 'OPERATOR_DISPATCHER', reason = '') =>
   request(`/optimization/learning/rollback/${policyVersion}`, {
     method: 'POST',
     body: JSON.stringify({ operator_id: operatorId, reason }),
   });
+
+
+// --- Real-Time Server-Sent Events Stream (M13 Phase 1) ---
+export function connectEventStream({
+  onEvent,
+  onSnapshot,
+  onGap,
+  onError,
+  onOpen,
+  sinceSequence = null,
+} = {}) {
+  let controller = new AbortController();
+  let isClosed = false;
+  let currentSeq = sinceSequence;
+  let reconnectTimer = null;
+  let reconnectAttempts = 0;
+
+  async function startStream() {
+    if (isClosed) return;
+    controller = new AbortController();
+
+    const token = localStorage.getItem('raah_token') || sessionStorage.getItem('raah_token');
+    const headers = {
+      'Accept': 'text/event-stream',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    let url = `${BASE_URL}/events/stream`;
+    if (currentSeq !== null && currentSeq !== undefined) {
+      url += `?since_sequence=${encodeURIComponent(currentSeq)}`;
+    }
+
+    try {
+      const response = await fetch(url, {
+        headers,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`SSE stream failed with HTTP ${response.status}`);
+      }
+
+      if (onOpen) onOpen();
+      reconnectAttempts = 0;
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (!isClosed) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // Retain incomplete line
+
+        let currentEvent = 'message';
+        let currentId = null;
+        let currentData = '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            if (currentData) {
+              try {
+                const parsed = JSON.parse(currentData);
+                if (currentId !== null) {
+                  currentSeq = parseInt(currentId, 10);
+                } else if (parsed.sequence !== undefined) {
+                  currentSeq = parsed.sequence;
+                }
+
+                if (parsed.event_type === 'STATE_SNAPSHOT') {
+                  if (parsed.payload && parsed.payload.gap_detected && onGap) {
+                    onGap(parsed);
+                  } else if (onSnapshot) {
+                    onSnapshot(parsed);
+                  }
+                }
+
+                if (onEvent) onEvent(parsed);
+              } catch (parseErr) {
+                console.warn('[SSE] JSON parse error:', parseErr);
+              }
+            }
+            currentEvent = 'message';
+            currentId = null;
+            currentData = '';
+            continue;
+          }
+
+          if (trimmed.startsWith('event:')) {
+            currentEvent = trimmed.slice(6).trim();
+          } else if (trimmed.startsWith('id:')) {
+            currentId = trimmed.slice(3).trim();
+          } else if (trimmed.startsWith('data:')) {
+            currentData += trimmed.slice(5).trim();
+          }
+        }
+      }
+    } catch (err) {
+      if (!isClosed && err.name !== 'AbortError') {
+        console.warn('[SSE] Stream disconnected:', err.message);
+        if (onError) onError(err);
+        scheduleReconnect();
+      }
+    }
+  }
+
+  function scheduleReconnect() {
+    if (isClosed || reconnectTimer) return;
+    reconnectAttempts++;
+    const delay = Math.min(1000 * Math.pow(1.5, reconnectAttempts - 1), 10000);
+    console.log(`[SSE] Reconnecting in ${Math.round(delay)}ms (attempt ${reconnectAttempts})...`);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      startStream();
+    }, delay);
+  }
+
+  startStream();
+
+  return {
+    close() {
+      isClosed = true;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      controller.abort();
+    },
+    getCurrentSequence() {
+      return currentSeq;
+    },
+  };
+}
 
 
 

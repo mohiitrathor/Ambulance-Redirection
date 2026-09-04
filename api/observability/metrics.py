@@ -43,6 +43,20 @@ class MetricsCollector:
         self._worker_restarts_total: int = 0
         self._retries_total: int = 0
 
+        # Real-time Event Stream metrics (M13 Phase 1)
+        self._active_stream_connections: int = 0
+        self._total_stream_connections: int = 0
+        self._disconnects_total: int = 0
+        self._reconnects_total: int = 0
+        self._replayed_events_total: int = 0
+        self._events_emitted_total: int = 0
+        self._events_dropped_total: int = 0
+        self._slow_clients_total: int = 0
+        self._sequence_gaps_total: int = 0
+        self._broadcast_latency_sum_ms: float = 0.0
+        self._broadcast_count: int = 0
+        self._heartbeats_total: int = 0
+
     def record_http_request(self, method: str, path: str, status_code: int, duration_ms: float):
         """Record an incoming HTTP request and response duration."""
         with self._lock:
@@ -88,6 +102,53 @@ class MetricsCollector:
         with self._lock:
             self._worker_restarts_total += 1
 
+    # Real-time Stream Telemetry Methods (M13 Phase 1)
+    def record_stream_connected(self):
+        """Record a new realtime subscriber connection."""
+        with self._lock:
+            self._active_stream_connections += 1
+            self._total_stream_connections += 1
+
+    def record_stream_disconnected(self):
+        """Record a realtime subscriber disconnection."""
+        with self._lock:
+            if self._active_stream_connections > 0:
+                self._active_stream_connections -= 1
+            self._disconnects_total += 1
+
+    def record_reconnect(self, replayed_events_count: int = 0):
+        """Record a client reconnect and replayed events."""
+        with self._lock:
+            self._reconnects_total += 1
+            self._replayed_events_total += replayed_events_count
+
+    def record_event_emitted(self, event_type: str, duration_ms: float):
+        """Record a successfully broadcasted event and distribution duration."""
+        with self._lock:
+            self._events_emitted_total += 1
+            self._broadcast_latency_sum_ms += duration_ms
+            self._broadcast_count += 1
+
+    def record_event_dropped(self):
+        """Record an event dropped due to subscriber queue saturation."""
+        with self._lock:
+            self._events_dropped_total += 1
+
+    def record_slow_client(self):
+        """Record a subscriber queue overflow / slow client incident."""
+        with self._lock:
+            self._slow_clients_total += 1
+
+    def record_sequence_gap(self):
+        """Record a sequence gap detection requiring snapshot recovery."""
+        with self._lock:
+            self._sequence_gaps_total += 1
+
+    def record_heartbeat(self):
+        """Record a keep-alive heartbeat emission."""
+        with self._lock:
+            self._heartbeats_total += 1
+
     def get_snapshot(self) -> Dict[str, Any]:
         """Generate a complete operational metrics snapshot dictionary."""
         with self._lock:
@@ -104,6 +165,11 @@ class MetricsCollector:
             mean_chk_lat = (
                 self._checkpoint_duration_sum_ms / self._checkpoints_total
                 if self._checkpoints_total > 0
+                else 0.0
+            )
+            mean_bcast_lat = (
+                self._broadcast_latency_sum_ms / self._broadcast_count
+                if self._broadcast_count > 0
                 else 0.0
             )
 
@@ -135,6 +201,19 @@ class MetricsCollector:
                 "resilience": {
                     "retries_total": self._retries_total,
                     "worker_restarts_total": self._worker_restarts_total,
+                },
+                "realtime_stream": {
+                    "active_connections": self._active_stream_connections,
+                    "total_connections": self._total_stream_connections,
+                    "disconnects_total": self._disconnects_total,
+                    "reconnects_total": self._reconnects_total,
+                    "replayed_events_total": self._replayed_events_total,
+                    "events_emitted_total": self._events_emitted_total,
+                    "events_dropped_total": self._events_dropped_total,
+                    "slow_clients_total": self._slow_clients_total,
+                    "sequence_gaps_total": self._sequence_gaps_total,
+                    "mean_broadcast_ms": round(mean_bcast_lat, 4),
+                    "heartbeats_total": self._heartbeats_total,
                 },
             }
 

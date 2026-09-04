@@ -64,6 +64,12 @@ async def lifespan(app: FastAPI):
         raise ValueError(f"Production configuration validation failed: {violations}")
 
     manager.initialize()
+    import asyncio
+    from api.realtime.broadcaster import broadcaster
+    try:
+        broadcaster.set_event_loop(asyncio.get_running_loop())
+    except Exception:
+        pass
     yield
     # Execute deterministic graceful shutdown with bounded timeout
     manager.shutdown(timeout_seconds=settings.request_timeout_seconds)
@@ -193,6 +199,12 @@ app.include_router(
 app.include_router(
     ingestion.router,
     dependencies=auth_dep,
+)
+
+# Realtime Server-Sent Events Stream (M13 Phase 1)
+from api.realtime import realtime_router
+app.include_router(
+    realtime_router,
 )
 
 
